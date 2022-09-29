@@ -2,32 +2,72 @@
 
 #include <ros/time.h>
 
-#include "geometry_msgs/PoseStamped.h"
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/Transform.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <tf2_ros/buffer.h>
 
 #include <gtsam/geometry/Pose3.h>
 
 // STYLE(Rahul): put this stuff into a namespace
 
-// Convert a gtsam Pose2 into a ros PoseStamped
-inline geometry_msgs::PoseStamped to_pose_stamped(const gtsam::Pose3 &pose, const std::string &frame) {
+inline geometry_msgs::Pose to_pose_message(const gtsam::Pose3 &pose) {
+    geometry_msgs::Pose pose_message;
 
-    geometry_msgs::PoseStamped pose_message;
-
-    pose_message.header.frame_id = frame;
-    pose_message.header.stamp = ros::Time::now();
-    pose_message.pose.position.x = pose.x();
-    pose_message.pose.position.y = pose.y();
-    pose_message.pose.position.z = pose.z();
+    pose_message.position.x = pose.x();
+    pose_message.position.y = pose.y();
+    pose_message.position.z = pose.z();
 
     const gtsam::Quaternion q = pose.rotation().toQuaternion();
 
-    pose_message.pose.orientation.x = q.x();
-    pose_message.pose.orientation.y = q.y();
-    pose_message.pose.orientation.z = q.z();
-    pose_message.pose.orientation.w = q.w();
+    pose_message.orientation.x = q.x();
+    pose_message.orientation.y = q.y();
+    pose_message.orientation.z = q.z();
+    pose_message.orientation.w = q.w();
 
     return pose_message;
+}
+
+// Convert a gtsam Pose2 into a ros PoseStamped
+inline geometry_msgs::PoseStamped to_pose_stamped_message(const gtsam::Pose3 &pose, const std::string &frame) {
+    geometry_msgs::PoseStamped pose_stamped_message;
+
+    pose_stamped_message.pose = to_pose_message(pose);
+    pose_stamped_message.header.frame_id = frame;
+    pose_stamped_message.header.stamp = ros::Time::now();
+
+    return pose_stamped_message;
+}
+
+inline geometry_msgs::Transform to_transform_message(const gtsam::Pose3 &pose) {
+
+    geometry_msgs::Transform transform_message;
+
+    transform_message.translation.x = pose.x();
+    transform_message.translation.y = pose.y();
+    transform_message.translation.z = pose.z();
+
+    const gtsam::Quaternion q = pose.rotation().toQuaternion();
+
+    transform_message.rotation.x = q.x();
+    transform_message.rotation.y = q.y();
+    transform_message.rotation.z = q.z();
+    transform_message.rotation.w = q.w();
+
+    return transform_message;
+}
+
+inline geometry_msgs::TransformStamped to_transform_stamped_message(const gtsam::Pose3 &pose, const std::string &parent_frame, const std::string &child_frame) {
+    geometry_msgs::TransformStamped transform_stamped_message;
+
+    transform_stamped_message.transform = to_transform_message(pose);
+
+    transform_stamped_message.header.stamp = ros::Time::now();
+    transform_stamped_message.header.frame_id = parent_frame;
+    transform_stamped_message.child_frame_id = child_frame;
+    
+    return transform_stamped_message;
 }
 
 inline gtsam::Pose3 from_tf(const geometry_msgs::TransformStamped &transform) {
