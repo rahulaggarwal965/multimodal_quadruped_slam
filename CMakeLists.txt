@@ -23,20 +23,18 @@ find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(OpenCV REQUIRED)
 
-add_message_files(
-    DIRECTORY msg
-    FILES
-    segmentation_info.msg
-    plane.msg
-)
-
-generate_messages(
-    DEPENDENCIES
-    std_msgs
-    nav_msgs
-    geometry_msgs
-    sensor_msgs
-)
+# add_message_files(
+#     DIRECTORY msg
+#     FILES
+# )
+#
+# generate_messages(
+#     DEPENDENCIES
+#     std_msgs
+#     nav_msgs
+#     geometry_msgs
+#     sensor_msgs
+# )
 
 catkin_package(
     INCLUDE_DIRS include
@@ -58,3 +56,7 @@ include_directories(
     ${OpenCV_INCLUDE_DIRS}
     ${GTSAM_INCLUDE_DIR}
 )
+
+add_executable(optimizer src/optimizer.cpp)
+add_dependencies(optimizer ${catkin_EXPORTED_TARGETS})
+target_link_libraries(optimizer ${catkin_LIBRARIES})
