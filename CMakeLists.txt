@@ -23,18 +23,19 @@ find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(OpenCV REQUIRED)
 
-# add_message_files(
-#     DIRECTORY msg
-#     FILES
-# )
-#
-# generate_messages(
-#     DEPENDENCIES
-#     std_msgs
-#     nav_msgs
-#     geometry_msgs
-#     sensor_msgs
-# )
+add_message_files(
+    DIRECTORY msg
+    FILES
+    biases.msg
+)
+
+generate_messages(
+    DEPENDENCIES
+    std_msgs
+    nav_msgs
+    geometry_msgs
+    sensor_msgs
+)
 
 catkin_package(
     INCLUDE_DIRS include
@@ -58,5 +59,9 @@ include_directories(
 )
 
 add_executable(optimizer src/optimizer.cpp)
-add_dependencies(optimizer ${catkin_EXPORTED_TARGETS})
+add_dependencies(optimizer ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(optimizer ${catkin_LIBRARIES})
+
+add_executable(imu src/imu.cpp)
+add_dependencies(optimizer ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
+target_link_libraries(imu ${catkin_LIBRARIES})

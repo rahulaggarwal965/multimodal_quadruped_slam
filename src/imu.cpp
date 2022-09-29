@@ -75,6 +75,7 @@ struct IMU {
     }
 
     void handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data);
+    void handle_biases();
 };
 
 // NOTE(Rahul):
