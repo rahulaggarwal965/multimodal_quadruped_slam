@@ -6,6 +6,8 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Transform.h>
 #include <geometry_msgs/TransformStamped.h>
+
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/buffer.h>
 
 #include <gtsam/geometry/Pose3.h>
@@ -68,6 +70,11 @@ inline geometry_msgs::TransformStamped to_transform_stamped_message(const gtsam:
     transform_stamped_message.child_frame_id = child_frame;
     
     return transform_stamped_message;
+
+}
+
+inline void to_tf_tree(tf2_ros::TransformBroadcaster &broadcaster, const gtsam::Pose3 &pose, const std::string &parent_frame, const std::string &child_frame) {
+    broadcaster.sendTransform(to_transform_stamped_message(pose, parent_frame, child_frame));
 }
 
 inline gtsam::Pose3 from_tf(const geometry_msgs::TransformStamped &transform) {
