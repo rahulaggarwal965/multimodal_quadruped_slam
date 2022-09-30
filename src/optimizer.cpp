@@ -1,8 +1,9 @@
 #include "optimizer.h"
 #include "utils.h"
 
-Optimizer::Optimizer() :
-    transform_listener(transform_buffer)
+Optimizer::Optimizer() 
+    : transform_listener(transform_buffer),
+      imu(nh)
 {
     trajectory_pub  = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
 }

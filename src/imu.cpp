@@ -5,11 +5,11 @@ using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
 using gtsam::symbol_shorthand::B;
 
-using gtsam::Pose3;
 using gtsam::Vector3;
 
-IMU::IMU() :
-    transform_listener(transform_buffer)
+IMU::IMU(ros::NodeHandle &nh) 
+    : nh(nh),
+      transform_listener(transform_buffer)
 {
     imu_sub = this->nh.subscribe<sensor_msgs::Imu>("imu", 1, &IMU::handle_imu, this);
 

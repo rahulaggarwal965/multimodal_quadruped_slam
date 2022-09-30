@@ -22,7 +22,7 @@ struct IMU {
     // to a point in the base_link coordinate frame
     gtsam::Pose3 base_link_T_imu;
 
-    ros::NodeHandle nh;
+    ros::NodeHandle &nh;
 
     ros::Subscriber imu_sub;
     ros::Publisher high_frequency_pose_pub;
@@ -41,7 +41,7 @@ struct IMU {
 
     int state_index = 0;
 
-    IMU();
+    IMU(ros::NodeHandle &nh);
 
     void handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data);
     void reset_integration(const gtsam::Vector3 &bias_acc, const gtsam::Vector3 &bias_gyro);

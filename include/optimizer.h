@@ -38,7 +38,6 @@ struct Optimizer {
     // perhaps it would be better to encapsulate IMU information inside a ros msg
     // but it is not clear how I would do that right now
     IMU imu;
-    ros::Publisher imu_bias_pub;
 
     ros::Publisher trajectory_pub;
 

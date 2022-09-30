@@ -58,6 +58,6 @@ include_directories(
     ${GTSAM_INCLUDE_DIR}
 )
 
-add_executable(state_estimation src/slam.cpp)
+add_executable(state_estimation src/slam.cpp src/optimizer.cpp src/imu.cpp)
 add_dependencies(state_estimation ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
-target_link_libraries(state_estimation ${catkin_LIBRARIES})
+target_link_libraries(state_estimation ${catkin_LIBRARIES} gtsam)

@@ -1,3 +1,4 @@
+#include <ros/ros.h>
 #include "optimizer.h"
 
 int main(int argc, char **argv) {
