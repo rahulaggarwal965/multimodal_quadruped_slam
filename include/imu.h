@@ -1,3 +1,5 @@
+#pragma once
+
 #include <ros/ros.h>
 #include <ros/time.h>
 #include <ros/publisher.h>
@@ -23,6 +25,7 @@ struct IMU {
     ros::NodeHandle nh;
 
     ros::Subscriber imu_sub;
+    ros::Publisher high_frequency_pose_pub;
 
     double last_time = 0;
 
@@ -34,8 +37,12 @@ struct IMU {
     gtsam::NavState prev_state;
     gtsam::imuBias::ConstantBias prev_bias;
 
+    gtsam::ImuFactor current_imu_factor;
+
+    int state_index = 0;
+
     IMU();
 
     void handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data);
-    void handle_biases();
+    void reset_integration(const gtsam::Vector3 &bias_acc, const gtsam::Vector3 &bias_gyro);
 };

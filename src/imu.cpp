@@ -11,7 +11,9 @@ using gtsam::Vector3;
 IMU::IMU() :
     transform_listener(transform_buffer)
 {
-    imu_sub = nh.subscribe<sensor_msgs::Imu>("imu", 1, &IMU::handle_imu, this);
+    imu_sub = this->nh.subscribe<sensor_msgs::Imu>("imu", 1, &IMU::handle_imu, this);
+
+    high_frequency_pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>("high_frequency/pose", 1);
 
     // TODO(rahul): should this really be init time. Might want to do an initialization 
     // when we get the first IMU measurement
@@ -68,6 +70,27 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     const auto current_state = imu_integrator.predict(this->prev_state, this->prev_bias);
 
+    current_imu_factor = gtsam::ImuFactor(X(state_index), V(state_index),
+                                          X(state_index + 1), V(state_index + 1), B(state_index),
+                                          this->imu_integrator);
+
+    // TODO(rahul):
+    // should we introduce a factor between the biases B(x - 1) and B(x) to say that bias remains constant?
+    // would introduce a slowly changing bias constraint that might be useful
+
+
     // TODO(Rahul): again "base_link" might not exist
     to_tf_tree(this->transform_broadcaster, current_state.pose(), "odom", "base_link");
+
+    geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), "odom");
+    this->high_frequency_pose_pub.publish(pose_stamped_message);
+}
+
+// Because this function is called by the optimizer, which can happen arbitrarily far after 
+// current_imu_factor is actually created, if this is multithreaded, we have to take extra 
+// precaution to not lose any measurements
+void IMU::reset_integration(const gtsam::Vector3 &bias_acc, const gtsam::Vector3 &bias_gyro) {
+    this->prev_bias = {bias_acc, bias_gyro};
+    this->imu_integrator.resetIntegrationAndSetBias(this->prev_bias);
+    this->state_index += 1;
 }
