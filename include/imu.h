@@ -18,6 +18,13 @@
 struct IMU {
     gtsam::PreintegratedImuMeasurements imu_integrator;
 
+    std::string imu_topic;
+    std::string imu_frame;
+    std::string high_frequency_state_topic;
+
+    std::string base_link_frame;
+    std::string odom_frame;
+
     // Transform that takes a point in the IMU coordinate frame 
     // to a point in the base_link coordinate frame
     gtsam::Pose3 base_link_T_imu;

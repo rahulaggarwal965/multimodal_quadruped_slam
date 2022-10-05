@@ -11,18 +11,23 @@ IMU::IMU(ros::NodeHandle &nh)
     : nh(nh),
       transform_listener(transform_buffer)
 {
-    imu_sub = this->nh.subscribe<sensor_msgs::Imu>("imu", 1, &IMU::handle_imu, this);
 
-    high_frequency_pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>("high_frequency/pose", 1);
+    this->nh.getParam("imu/imu_topic", this->imu_topic);
+    this->nh.getParam("imu/imu_frame", this->imu_frame);
+    this->nh.getParam("imu/high_frequency_state_topic", this->high_frequency_state_topic);
+
+    this->nh.getParam("base_link_frame", this->base_link_frame);
+    this->nh.getParam("odom_frame", this->odom_frame);
+
+    imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->imu_topic, 1, &IMU::handle_imu, this);
+
+    high_frequency_pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>(this->high_frequency_state_topic, 1);
 
     // TODO(rahul): should this really be init time. Might want to do an initialization 
     // when we get the first IMU measurement
     last_time = ros::Time::now().toSec();
 
-    // TODO(rahul): not sure if we actually have a base_link frame.
-    // make this a configurable parameter
-    this->base_link_T_imu = from_tf_tree(this->transform_buffer, "base_link", "imu");
-
+    this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->imu_frame);
 
     // gravity points down (-z)
     auto preintegration_params = gtsam::PreintegrationParams::MakeSharedU();
@@ -32,9 +37,17 @@ IMU::IMU(ros::NodeHandle &nh)
     preintegration_params->setIntegrationCovariance(gtsam::Matrix::Identity(3, 3));
     preintegration_params->setBodyPSensor(this->base_link_T_imu);
 
+
+    // TODO(Rahul): this is ugly to have to go to a std::vector and then convert into a Vector
+    // refactor so we don't have to have these temporaries in this scope
+    std::vector<float> prior_accelerometer_bias;
+    std::vector<float> prior_gyroscope_bias;
+    this->nh.getParam("prior_accelerometer_bias", prior_accelerometer_bias);
+    this->nh.getParam("prior_gyroscope_bias", prior_gyroscope_bias);
+
     gtsam::imuBias::ConstantBias prior_imu_bias{
-        Vector3{0, 0, 0}, // b_a (linear acceleration bias)
-        Vector3{0, 0, 0} // b_g (angular velocity bias)
+        Vector3{prior_accelerometer_bias.data()},  // b_a (linear acceleration bias)
+        Vector3{prior_gyroscope_bias.data()}       // b_g (angular velocity bias)
     };
 
     this->imu_integrator = gtsam::PreintegratedImuMeasurements(preintegration_params, prior_imu_bias);
@@ -78,11 +91,9 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
     // should we introduce a factor between the biases B(x - 1) and B(x) to say that bias remains constant?
     // would introduce a slowly changing bias constraint that might be useful
 
+    to_tf_tree(this->transform_broadcaster, current_state.pose(), this->odom_frame, this->base_link_frame);
 
-    // TODO(Rahul): again "base_link" might not exist
-    to_tf_tree(this->transform_broadcaster, current_state.pose(), "odom", "base_link");
-
-    geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), "odom");
+    geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), this->odom_frame);
     this->high_frequency_pose_pub.publish(pose_stamped_message);
 }
 
