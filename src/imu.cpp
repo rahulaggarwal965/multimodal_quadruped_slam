@@ -40,8 +40,8 @@ IMU::IMU(ros::NodeHandle &nh)
 
     // TODO(Rahul): this is ugly to have to go to a std::vector and then convert into a Vector
     // refactor so we don't have to have these temporaries in this scope
-    std::vector<float> prior_accelerometer_bias;
-    std::vector<float> prior_gyroscope_bias;
+    std::vector<double> prior_accelerometer_bias;
+    std::vector<double> prior_gyroscope_bias;
     this->nh.getParam("prior_accelerometer_bias", prior_accelerometer_bias);
     this->nh.getParam("prior_gyroscope_bias", prior_gyroscope_bias);
 
