@@ -61,3 +61,7 @@ include_directories(
 add_executable(state_estimation src/slam.cpp src/optimizer.cpp src/imu.cpp)
 add_dependencies(state_estimation ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(state_estimation ${catkin_LIBRARIES} gtsam)
+
+add_executable(legged_kinematics src/legged_kinematics.cpp)
+add_dependencies(legged_kinematics ${catkin_EXPORTED_TARGETS})
+target_link_libraries(legged_kinematics ${catkin_LIBRARIES} gtsam)
