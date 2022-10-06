@@ -1,5 +1,10 @@
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/linear/NoiseModel.h>
+
 #include "optimizer.h"
 #include "utils.h"
+
+using gtsam::symbol_shorthand::X;
 
 Optimizer::Optimizer() 
     : transform_listener(transform_buffer),
@@ -10,6 +15,13 @@ Optimizer::Optimizer()
     this->nh.getParam("odom_frame", this->odom_frame);
 
     trajectory_pub  = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
+
+    std::vector<double> prior_pose_sigmas;
+    this->nh.getParam("optimizer/prior_pose_sigmas", prior_pose_sigmas);
+
+    // We always start at 0
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, gtsam::Vector{prior_pose_sigmas.data()}.asDiagonal()));
+    this->initial_estimate.insert(X(0), gtsam::Pose3{});
 }
 
 // TODO:
