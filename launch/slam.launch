@@ -1,0 +1,5 @@
+<launch>
+    <rosparam file="$(find quadruped_slam)/config/config.yaml" />
+
+    <node pkg="quadruped_slam" type="state_estimation" name="state_estimation" output="screen"></node>
+</launch>

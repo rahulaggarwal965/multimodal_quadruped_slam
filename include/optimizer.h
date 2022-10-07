@@ -25,6 +25,11 @@
 // NOTE(Rahul):
 // might fold in IMU into this class to avoid complexity
 struct Optimizer {
+
+    std::string map_frame;
+    std::string base_link_frame;
+    std::string odom_frame;
+
     gtsam::ISAM2 isam;
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values initial_estimate;

@@ -1,0 +1,27 @@
+map_frame: map
+odom_frame: odom
+base_link_frame: base
+
+optimizer: {
+
+  # values taken approximately from LIO-SAM
+  # r p y x y z (rad x meters)
+  prior_pose_sigmas: [1.0e-3, 1.0e-3, 1.0e-3, 1.0e-2, 1.0e-2, 1.0e-2],
+
+}
+
+imu: {
+
+  imu_topic: /trunk_imu,
+  imu_frame: imu_link,
+
+  high_frequency_state_topic: /high_frequency_state/pose,
+
+  accelerometer_variances: [0.1, 0.1, 0.1],
+  gyroscope_variances: [0.1, 0.1, 0.1],
+  integration_variances: [0.1, 0.1, 0.1],
+
+  prior_accelerometer_bias: [0.0, 0.0, 0.0],
+  prior_gyroscope_bias: [0.0, 0.0, 0.0],
+
+}

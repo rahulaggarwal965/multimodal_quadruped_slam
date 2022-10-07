@@ -1,11 +1,24 @@
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/linear/NoiseModel.h>
+
 #include "optimizer.h"
 #include "utils.h"
+
+using gtsam::symbol_shorthand::X;
 
 Optimizer::Optimizer() 
     : transform_listener(transform_buffer),
       imu(nh)
 {
+    this->nh.getParam("/map_frame", this->map_frame);
+    this->nh.getParam("/base_link_frame", this->base_link_frame);
+    this->nh.getParam("/odom_frame", this->odom_frame);
+
     trajectory_pub  = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
+
+    // We always start at 0
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
+    this->initial_estimate.insert(X(0), gtsam::Pose3{});
 }
 
 // TODO:
@@ -34,9 +47,9 @@ void Optimizer::optimize(int steps) {
 
 void Optimizer::publish_trajectory() {
     nav_msgs::Path trajectory;
-    trajectory.header.frame_id = "map";
+    trajectory.header.frame_id = this->map_frame;
     for (const auto &pose : this->current_poses) {
-        trajectory.poses.push_back(to_pose_stamped_message(pose.value.cast<gtsam::Pose3>(), "map"));
+        trajectory.poses.push_back(to_pose_stamped_message(pose.value.cast<gtsam::Pose3>(), this->map_frame));
     } 
 
     trajectory.header.stamp = ros::Time::now();
