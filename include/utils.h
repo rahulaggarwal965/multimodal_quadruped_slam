@@ -90,9 +90,9 @@ inline gtsam::Pose3 from_tf(const geometry_msgs::TransformStamped &transform) {
     return pose;
 }
 
-inline gtsam::Pose3 from_tf_tree(tf2_ros::Buffer &buffer, const std::string &parent_frame, const std::string &child_frame) {
+inline gtsam::Pose3 from_tf_tree(tf2_ros::Buffer &buffer, const std::string &parent_frame, const std::string &child_frame, const ros::Duration timeout = ros::Duration{0}) {
     // gets the transform T of the child_frame in the parent_frame
     // e.g if a point p is (0, 0, 0) in the child_frame, then the point is Tp in the parent frame
-    const geometry_msgs::TransformStamped transform = buffer.lookupTransform(parent_frame, child_frame, ros::Time(0));
+    const geometry_msgs::TransformStamped transform = buffer.lookupTransform(parent_frame, child_frame, ros::Time(0), timeout);
     return from_tf(transform);
 }

@@ -12,12 +12,12 @@ IMU::IMU(ros::NodeHandle &nh)
       transform_listener(transform_buffer)
 {
 
-    this->nh.getParam("imu/imu_topic", this->imu_topic);
-    this->nh.getParam("imu/imu_frame", this->imu_frame);
-    this->nh.getParam("imu/high_frequency_state_topic", this->high_frequency_state_topic);
+    this->nh.getParam("/imu/imu_topic", this->imu_topic);
+    this->nh.getParam("/imu/imu_frame", this->imu_frame);
+    this->nh.getParam("/imu/high_frequency_state_topic", this->high_frequency_state_topic);
 
-    this->nh.getParam("base_link_frame", this->base_link_frame);
-    this->nh.getParam("odom_frame", this->odom_frame);
+    this->nh.getParam("/base_link_frame", this->base_link_frame);
+    this->nh.getParam("/odom_frame", this->odom_frame);
 
     imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->imu_topic, 1, &IMU::handle_imu, this);
 
@@ -27,7 +27,7 @@ IMU::IMU(ros::NodeHandle &nh)
     // when we get the first IMU measurement
     last_time = ros::Time::now().toSec();
 
-    this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->imu_frame);
+    this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->imu_frame, ros::Duration{1.0});
 
     // gravity points down (-z)
     auto preintegration_params = gtsam::PreintegrationParams::MakeSharedU();
@@ -42,8 +42,8 @@ IMU::IMU(ros::NodeHandle &nh)
     // refactor so we don't have to have these temporaries in this scope
     std::vector<double> prior_accelerometer_bias;
     std::vector<double> prior_gyroscope_bias;
-    this->nh.getParam("prior_accelerometer_bias", prior_accelerometer_bias);
-    this->nh.getParam("prior_gyroscope_bias", prior_gyroscope_bias);
+    this->nh.getParam("/imu/prior_accelerometer_bias", prior_accelerometer_bias);
+    this->nh.getParam("/imu/prior_gyroscope_bias", prior_gyroscope_bias);
 
     gtsam::imuBias::ConstantBias prior_imu_bias{
         Vector3{prior_accelerometer_bias.data()},  // b_a (linear acceleration bias)
