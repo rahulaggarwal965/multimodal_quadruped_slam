@@ -19,7 +19,7 @@ imu: {
 
   accelerometer_variances: [0.1, 0.1, 0.1],
   gyroscope_variances: [0.1, 0.1, 0.1],
-  integration_variances: [0.1, 0.1, 0.1]
+  integration_variances: [0.1, 0.1, 0.1],
 
   prior_accelerometer_bias: [0.0, 0.0, 0.0],
   prior_gyroscope_bias: [0.0, 0.0, 0.0],
