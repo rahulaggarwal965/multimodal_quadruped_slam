@@ -32,22 +32,15 @@ IMU::IMU(ros::NodeHandle &nh)
     // gravity points down (-z)
     auto preintegration_params = gtsam::PreintegrationParams::MakeSharedU();
     // TODO(Rahul): set params
-    preintegration_params->setAccelerometerCovariance(gtsam::Matrix::Identity(3, 3));
-    preintegration_params->setGyroscopeCovariance(gtsam::Matrix::Identity(3, 3));
-    preintegration_params->setIntegrationCovariance(gtsam::Matrix::Identity(3, 3));
+
+    preintegration_params->setAccelerometerCovariance(vector_from_param<3>(nh, "/imu/accelerometer_variances").asDiagonal());
+    preintegration_params->setGyroscopeCovariance(vector_from_param<3>(nh, "/imu/gyroscope_variances").asDiagonal());
+    preintegration_params->setIntegrationCovariance(vector_from_param<3>(nh, "/imu/integration_variances").asDiagonal());
     preintegration_params->setBodyPSensor(this->base_link_T_imu);
 
-
-    // TODO(Rahul): this is ugly to have to go to a std::vector and then convert into a Vector
-    // refactor so we don't have to have these temporaries in this scope
-    std::vector<double> prior_accelerometer_bias;
-    std::vector<double> prior_gyroscope_bias;
-    this->nh.getParam("/imu/prior_accelerometer_bias", prior_accelerometer_bias);
-    this->nh.getParam("/imu/prior_gyroscope_bias", prior_gyroscope_bias);
-
     gtsam::imuBias::ConstantBias prior_imu_bias{
-        Vector3{prior_accelerometer_bias.data()},  // b_a (linear acceleration bias)
-        Vector3{prior_gyroscope_bias.data()}       // b_g (angular velocity bias)
+        vector_from_param<3>(nh, "/imu/prior_accelerometer_bias"),
+        vector_from_param<3>(nh, "/imu/prior_gyroscope_bias")
     };
 
     this->imu_integrator = gtsam::PreintegratedImuMeasurements(preintegration_params, prior_imu_bias);

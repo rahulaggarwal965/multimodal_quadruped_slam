@@ -96,3 +96,12 @@ inline gtsam::Pose3 from_tf_tree(tf2_ros::Buffer &buffer, const std::string &par
     const geometry_msgs::TransformStamped transform = buffer.lookupTransform(parent_frame, child_frame, ros::Time(0), timeout);
     return from_tf(transform);
 }
+
+template<int s>
+Eigen::Matrix<double, s, 1> vector_from_param(const ros::NodeHandle &nh, const std::string &param_name) {
+    std::vector<double> v;
+    nh.getParam(param_name, v);
+    return Eigen::Matrix<double, s, 1>(v.data());
+}
+
+

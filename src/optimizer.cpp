@@ -16,11 +16,8 @@ Optimizer::Optimizer()
 
     trajectory_pub  = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
 
-    std::vector<double> prior_pose_sigmas;
-    this->nh.getParam("/optimizer/prior_pose_sigmas", prior_pose_sigmas);
-
     // We always start at 0
-    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, Eigen::Matrix<double, 6, 1>{prior_pose_sigmas.data()}.asDiagonal()));
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
     this->initial_estimate.insert(X(0), gtsam::Pose3{});
 }
 
