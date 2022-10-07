@@ -1,57 +1,30 @@
-#include <ros/ros.h>
-#include <ros/time.h>
-#include <ros/publisher.h>
-#include <ros/subscriber.h>
-
-#include "nav_msgs/Path.h"
-
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
-
-#include <gtsam/nonlinear/ISAM2.h>
-#include <gtsam/nonlinear/NonlinearFactorGraph.h>
-#include <gtsam/geometry/Pose2.h>
-#include <gtsam/slam/BearingRangeFactor.h>
-#include <gtsam/slam/PriorFactor.h>
-#include <gtsam/slam/BetweenFactor.h>
-#include <gtsam/base/Matrix.h>
+#include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/NoiseModel.h>
 
+#include "optimizer.h"
 #include "utils.h"
 
-using Pose3 = gtsam::Pose3;
+using gtsam::symbol_shorthand::X;
 
-struct Optimizer {
-    gtsam::ISAM2 isam;
-    gtsam::NonlinearFactorGraph graph;
-    gtsam::Values initial_estimate;
-    gtsam::Values current_poses;
+Optimizer::Optimizer() 
+    : transform_listener(transform_buffer),
+      imu(nh)
+{
+    this->nh.getParam("/map_frame", this->map_frame);
+    this->nh.getParam("/base_link_frame", this->base_link_frame);
+    this->nh.getParam("/odom_frame", this->odom_frame);
 
-    ros::NodeHandle nh;
+    trajectory_pub  = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
 
-    ros::Subscriber imu_sub;
-    ros::Publisher imu_bias_pub;
+    // We always start at 0
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
+    this->initial_estimate.insert(X(0), gtsam::Pose3{});
+}
 
-    ros::Publisher trajectory_pub;
-
-
-    tf::TransformListener transform_listener;
-    tf::TransformBroadcaster transform_broadcaster;
-
-    Optimizer() {
-        
-        /* imu_sub = nh.subscribe("imu", 5, &Optimizer::imu_callback, this); */
-        trajectory_pub  = nh.advertise<nav_msgs::Path>("trajectory", 1);
-    }
-
-    /* void imu_callback() */
-
-    // TODO(rahul): think about when we want to actually optimize. Ideally, this should not happen very often, preferably when we get a lidar/camera scan.
-    void optimize(int steps = 1);
-
-    void publish_trajectory();
-
-};
+// TODO:
+// we need to optimize at some point. I am thinking
+// that when we receive an exteroceptive factor (via lidar/camera)
+// we take the latest imu_factor in the threaded queue 
 
 void Optimizer::optimize(int steps) {
 
@@ -64,13 +37,19 @@ void Optimizer::optimize(int steps) {
     
     this->graph = gtsam::NonlinearFactorGraph();
     this->initial_estimate.clear();
+
+    this->publish_trajectory();
+
+    // TODO(Rahul):
+    // publish map_to_odom transform
+    // requires listening for odom_to_base_link
 }
 
 void Optimizer::publish_trajectory() {
     nav_msgs::Path trajectory;
-    trajectory.header.frame_id = "map";
+    trajectory.header.frame_id = this->map_frame;
     for (const auto &pose : this->current_poses) {
-        trajectory.poses.push_back(generate_pose_message(pose.value.cast<Pose3>(), "map"));
+        trajectory.poses.push_back(to_pose_stamped_message(pose.value.cast<gtsam::Pose3>(), this->map_frame));
     } 
 
     trajectory.header.stamp = ros::Time::now();
