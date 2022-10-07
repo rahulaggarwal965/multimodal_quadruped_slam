@@ -51,14 +51,18 @@ gtsam::Matrix33 compute_leg_jacobian(const gtsam::Vector3 &q, const gtsam::Vecto
 }
 
 struct Leg {
-    const int sideSign;
+    const int side_sign;
     Eigen::Vector3d q; //joint angles
+
+    Leg(int side_sign, Eigen::Vector3d q)
+        : side_sign(side_sign),
+        q(q) {}
 
 };
 
 struct LeggedKinematics {
 
-    const int side_sign[4] = {-1, 1, -1, 1};
+    Leg legs[4];
 
     ros::NodeHandle nh;
 
@@ -67,6 +71,8 @@ struct LeggedKinematics {
 
     tf2_ros::Buffer transform_buffer;
     tf2_ros::TransformListener tranform_listener;
+
+    gtsam::Vector3 encoder_covariance;
 
     LeggedKinematics();
 
@@ -77,8 +83,12 @@ struct LeggedKinematics {
 LeggedKinematics::LeggedKinematics() 
     : tranform_listener(transform_buffer)
 {
-    // TODO(Rahul): make topics params
+    // TODO(Rahul): make topics params as in the IMU PRha
     leg_state_sub = nh.subscribe<unitree_legged_msgs::LowState>("/a1_gazebo/lowState/state", 1, &LeggedKinematics::handle_low_state, this);
+}
+
+void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConstPtr &low_state) {
+    
 }
 
 int main(int argc, char **argv) {
