@@ -25,3 +25,13 @@ imu: {
   prior_gyroscope_bias: [0.0, 0.0, 0.0],
 
 }
+
+legged_kinematics: {
+  
+  # radians
+  motor_encoder_variances: [0.1, 0.1, 0.1],
+
+  # for pinocchio
+  urdf_file_name: /home/infinity/catkin_ws/src/quadruped_sim/robots_descriptions/a1_description/xacro/a1.urdf
+
+}
