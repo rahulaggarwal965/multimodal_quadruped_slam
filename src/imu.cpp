@@ -1,5 +1,7 @@
 #include "imu.h"
 #include "utils.h"
+#include <gtsam/navigation/ImuFactor.h>
+#include <gtsam/slam/BetweenFactor.h>
 
 using gtsam::symbol_shorthand::X;
 using gtsam::symbol_shorthand::V;
@@ -53,6 +55,18 @@ IMU::IMU(ros::NodeHandle &nh)
 // this implies we will a small queue to store IMU messages as they come in, 
 // so that we can re-integrate
 
+IMUFactor IMU::create_factor(int from, int to) {
+    IMUFactor factor;
+    factor.factor = gtsam::ImuFactor(X(from), V(from), X(to), V(to), B(from), this->imu_integrator);
+    factor.pose_estimate = this->current_state.pose();
+    factor.velocity_estimate = this->current_state.v();
+    factor.bias_estimate = this->prev_bias;
+    // TODO(rahul): figure out noise model for this factor
+    /* graph.add(gtsam::BetweenFactor<gtsam::imuBias::ConstantBias>(B(from), B(to), gtsam::imuBias::ConstantBias(), )) */
+
+    return factor;
+};
+
 void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     if (last_time == 0) {
@@ -74,11 +88,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     last_time = imu_data->header.stamp.toSec();
 
-    const auto current_state = imu_integrator.predict(this->prev_state, this->prev_bias);
-
-    current_imu_factor = gtsam::ImuFactor(X(state_index), V(state_index),
-                                          X(state_index + 1), V(state_index + 1), B(state_index),
-                                          this->imu_integrator);
+    this->current_state = imu_integrator.predict(this->prev_state, this->prev_bias);
 
     // TODO(rahul):
     // should we introduce a factor between the biases B(x - 1) and B(x) to say that bias remains constant?
@@ -93,8 +103,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 // Because this function is called by the optimizer, which can happen arbitrarily far after 
 // current_imu_factor is actually created, if this is multithreaded, we have to take extra 
 // precaution to not lose any measurements
-void IMU::reset_integration(const gtsam::Vector3 &bias_acc, const gtsam::Vector3 &bias_gyro) {
-    this->prev_bias = {bias_acc, bias_gyro};
-    this->imu_integrator.resetIntegrationAndSetBias(this->prev_bias);
-    this->state_index += 1;
+void IMU::reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 p, const gtsam::Vector3 v) {
+    this->imu_integrator.resetIntegrationAndSetBias(b);
+    this->prev_state = {p, v};
 }

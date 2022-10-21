@@ -14,6 +14,7 @@
 
 #include <algorithm>
 
+// gtsam redefines boost::serialization::... as well
 #define __pinocchio_serialization_eigen_matrix_hpp__
 #include <pinocchio/algorithm/jacobian.hpp>
 #include <pinocchio/parsers/urdf.hpp>
@@ -22,52 +23,10 @@
 #include "quadruped_slam/ForwardKinematicFactorStamped.h"
 #include "quadruped_slam/RigidContactFactorStamped.h"
 
-
-// needs to be 6x3
-/* gtsam::Matrix33 compute_leg_jacobian(const gtsam::Vector3 &q, const gtsam::Vector4 &l) { */
-/*  */
-/*     // q = joint angles */
-/*     // l = limb lengths */
-/*  */
-/*     // TODO(rahul): what do these represent */
-/*     // l1 = abadLinkLength; */
-/*     // l2 = hipLinkLength; */
-/*     // l3 = kneeLinkLength; */
-/*     // l4 = kneeLinkY_offset; */
-/*  */
-/*     const auto s1 = std::sin( q[0]); */
-/*     const auto s2 = std::sin(-q[1]); */
-/*     const auto s3 = std::sin(-q[2]); */
-/*  */
-/*     const auto c1 = std::cos( q[0]); */
-/*     const auto c2 = std::cos(-q[1]); */
-/*     const auto c3 = std::cos(-q[2]); */
-/*  */
-/*     const auto c23 = c2 * c3 - s2 * s3; */
-/*     const auto s23 = s2 * c3 + c2 * s3; */
-/*  */
-/*     gtsam::Matrix33 J { */
-/*         {0, -l[2] * c23 - l[1] * c2,  -l[2] * c23}, */
-/*         {}, */
-/*         {}, */
-/*     } */
-/*  */
-/*     if (J) { */
-/*         J->operator()(0, 0) = 0; */
-/*         J->operator()(0, 1) = -l3 * c23 - l2 * c2; */
-/*         J->operator()(0, 2) = -l3 * c23; */
-/*         J->operator()(1, 0) = l3 * c1 * c23 + l2 * c1 * c2 - (l1+l4) * sideSign * s1; */
-/*         J->operator()(1, 1) = l3 * s1 * s23 + l2 * s1 * s2; */
-/*         J->operator()(1, 2) = l3 * s1 * s23; */
-/*         J->operator()(2, 0) = l3 * s1 * c23 + l2 * c2 * s1 + (l1+l4) * sideSign * c1; */
-/*         J->operator()(2, 1) = -l3 * c1 * s23 - l2 * c1 * s2; */
-/*         J->operator()(2, 2) = -l3 * c1 * s23; */
-/*     } */
-/* } */
-
 struct Leg {
     Eigen::Vector3d q = {0, 0, 0}; //joint angles
     bool in_contact = false;
+    double t = 0.0;
 };
 
 struct LeggedKinematics {
@@ -155,7 +114,8 @@ void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConst
         gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose();
 
         quadruped_slam::ForwardKinematicFactorStamped fk_msg;
-        fk_msg.header.stamp = ros::Time::now();
+        const auto t = ros::Time::now();
+        fk_msg.header.stamp = t;
         fk_msg.forward_kinematic_factor.id = 1; // FR
         fk_msg.forward_kinematic_factor.contact_pose = to_pose_message(FR_transform);
         for (int i = 0; i < 36; i++) {
@@ -164,6 +124,7 @@ void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConst
         this->forward_kinematic_factor_pub.publish(fk_msg);
 
         FR.in_contact = FR_in_contact;
+        FR.t = t.toSec();
     }
 
     if (FR.in_contact && !FR_in_contact) {
@@ -181,7 +142,8 @@ void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConst
         gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose();
 
         quadruped_slam::RigidContactFactorStamped rc_msg;
-        rc_msg.header.stamp = ros::Time::now();
+        const auto t = ros::Time::now();
+        rc_msg.header.stamp = t;
 
         auto &rc = rc_msg.rigid_contact_factor;
 
@@ -192,7 +154,7 @@ void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConst
         }
 
         for (int i = 0; i < 36; i++) {
-            // TODO(rahul): keep track of time and param multiply
+            // TODO(rahul): multiply the covarainces by the time elapsed
             rc.contact_noise[i] = 0;
         }
 
