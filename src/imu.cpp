@@ -103,7 +103,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 // Because this function is called by the optimizer, which can happen arbitrarily far after 
 // current_imu_factor is actually created, if this is multithreaded, we have to take extra 
 // precaution to not lose any measurements
-void IMU::reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 p, const gtsam::Vector3 v) {
+void IMU::reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 &p, const gtsam::Vector3 &v) {
     this->imu_integrator.resetIntegrationAndSetBias(b);
     this->prev_state = {p, v};
 }

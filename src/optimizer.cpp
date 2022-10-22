@@ -32,13 +32,14 @@ Optimizer::Optimizer()
         vector_from_param<3>(nh, "/optimizer/prior_vel_sigmas").asDiagonal()));
     this->initial_estimates.insert(V(0), gtsam::Vector3{});
 
-    this->graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), imu.prior_imu_bias));
-}
+    // TODO(rahul): refactor out IMU specific initialization
+    gtsam::imuBias::ConstantBias prior_imu_bias{
+        vector_from_param<3>(nh, "/imu/prior_accelerometer_bias"),
+        vector_from_param<3>(nh, "/imu/prior_gyroscope_bias")
+    };
 
-// TODO:
-// we need to optimize at some point. I am thinking
-// that when we receive an exteroceptive factor (via lidar/camera)
-// we take the latest imu_factor in the threaded queue 
+    this->graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), prior_imu_bias));
+}
 
 void Optimizer::optimize(int steps) {
 
@@ -54,9 +55,8 @@ void Optimizer::optimize(int steps) {
 
     this->publish_trajectory();
 
-    // TODO(Rahul):
-    // publish map_to_odom transform
-    // requires listening for odom_to_base_link
+    const gtsam::Pose3 map_to_odom = this->current_state.at<gtsam::Pose3>(X(state_index)).compose(imu.current_state.pose().inverse());
+    to_tf_tree(this->transform_broadcaster, map_to_odom, this->map_frame, this->odom_frame);
 }
 
 void Optimizer::publish_trajectory() {
@@ -72,9 +72,8 @@ void Optimizer::publish_trajectory() {
 
 void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor) {
     const gtsam::Pose3 &contact_pose = from_pose_message(forward_kinematic_factor->forward_kinematic_factor.contact_pose);
-    const Eigen::Matrix<float, 6, 6> encoder_noise_matrix{forward_kinematic_factor->forward_kinematic_factor.encoder_noise.data()};
+    const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor->forward_kinematic_factor.encoder_noise.data()};
     
-
     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
     this->graph.add(imu_factor.factor);
     this->initial_estimates.at<gtsam::Pose3>(X(state_index)) = imu_factor.pose_estimate;
@@ -101,13 +100,29 @@ void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFa
     const auto &forward_kinematic_factor = rigid_contact_factor->rigid_contact_factor.forward_kinematic_factor;
 
     const gtsam::Pose3 &contact_pose = from_pose_message(forward_kinematic_factor.contact_pose);
-    const Eigen::Matrix<float, 6, 6> encoder_noise_matrix{forward_kinematic_factor.encoder_noise.data()};
-    const Eigen::Matrix<float, 6, 6> contact_pose_covariance{rigid_contact_factor->rigid_contact_factor.contact_noise.data()};
+    const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor.encoder_noise.data()};
+    const Eigen::Matrix<double, 6, 6> contact_pose_covariance{rigid_contact_factor->rigid_contact_factor.contact_noise.data()};
     
+    IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
+    this->graph.add(imu_factor.factor);
+    this->initial_estimates.at<gtsam::Pose3>(X(state_index)) = imu_factor.pose_estimate;
+    this->initial_estimates.at<gtsam::Vector3>(V(state_index)) = imu_factor.velocity_estimate;
+    this->initial_estimates.at<gtsam::imuBias::ConstantBias>(B(state_index)) = imu_factor.bias_estimate;
+
     this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(X(state_index), C(state_index), contact_pose, gtsam::noiseModel::Gaussian::Covariance(encoder_noise_matrix)));
+
+    // @Robustness(Rahul): is this really a correct way of doing this, where should we linearize? By the forward kinematic factor or the contact pose?
+    this->initial_estimates.at<gtsam::Pose3>(C(state_index)) = this->current_state.at<gtsam::Pose3>(C(state_index - 1));
 
     this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), 
                 gtsam::noiseModel::Gaussian::Covariance(contact_pose_covariance)));
+
+    this->optimize();
+
+    this->imu.reset_integration(
+            current_state.at<gtsam::imuBias::ConstantBias>(B(state_index)),
+            current_state.at<gtsam::Pose3>(X(state_index)),
+            current_state.at<gtsam::Vector3>(V(state_index)));
 
     state_index += 1;
 

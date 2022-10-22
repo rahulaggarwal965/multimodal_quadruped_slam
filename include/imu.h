@@ -51,7 +51,7 @@ struct IMU {
     IMU(ros::NodeHandle &nh);
 
     void handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data);
-    void reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 p, const gtsam::Vector3 v);
+    void reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 &p, const gtsam::Vector3 &v);
 
     IMUFactor create_factor(int from, int to);
 };
