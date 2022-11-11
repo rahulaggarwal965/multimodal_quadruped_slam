@@ -52,6 +52,7 @@ struct Optimizer {
     ros::Subscriber rigid_contact_factor_pub;
 
     ros::Publisher trajectory_pub;
+    ros::Publisher pose_pub;
 
 
     tf2_ros::Buffer transform_buffer;
@@ -62,7 +63,7 @@ struct Optimizer {
 
     // TODO(rahul): think about when we want to actually optimize. Ideally, this
     // should not happen very often, preferably when we get a lidar/camera scan.
-    void optimize(int steps = 1);
+    void optimize(int steps = 0);
 
     void publish_trajectory();
 

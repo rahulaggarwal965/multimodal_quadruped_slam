@@ -1,7 +1,12 @@
+#include <fstream>
+#include <gtsam/slam/BetweenFactor.h>
+#include <ios>
+
 #include <gtsam/base/Vector.h>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/linear/NoiseModel.h>
+#include <gtsam/linear/linearExceptions.h>
 
 #include "optimizer.h"
 #include "utils.h"
@@ -20,6 +25,7 @@ Optimizer::Optimizer()
     this->nh.getParam("/odom_frame", this->odom_frame);
 
     trajectory_pub = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
+    pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>("pose", 1);
 
     forward_kinematic_factor_pub = this->nh.subscribe<quadruped_slam::ForwardKinematicFactorStamped>("/legged_kinematics/forward_kinematic_factor", 1, &Optimizer::handle_forward_kinematic_factor, this);
     rigid_contact_factor_pub = this->nh.subscribe<quadruped_slam::RigidContactFactorStamped>("/legged_kinematics/rigid_contact_factor", 1, &Optimizer::handle_rigid_contact_factor, this);
@@ -32,30 +38,59 @@ Optimizer::Optimizer()
         vector_from_param<3>(nh, "/optimizer/prior_vel_sigmas").asDiagonal()));
     this->initial_estimates.insert(V(0), gtsam::Vector3{});
 
-    // TODO(rahul): refactor out IMU specific initialization
-    gtsam::imuBias::ConstantBias prior_imu_bias{
-        vector_from_param<3>(nh, "/imu/prior_accelerometer_bias"),
-        vector_from_param<3>(nh, "/imu/prior_gyroscope_bias")
-    };
 
-    this->graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), prior_imu_bias));
+    this->graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), imu.prev_bias));
+    this->initial_estimates.insert(B(0), imu.prev_bias);
 }
 
 void Optimizer::optimize(int steps) {
 
-    this->isam.update(this->graph, this->initial_estimates);
-    for (int i = 0; i < steps; i++) {
-        this->isam.update();
+    try {
+        this->isam.update(this->graph, this->initial_estimates);
+        for (int i = 0; i < steps; i++) {
+            this->isam.update();
+        }
+    } catch(const gtsam::IndeterminantLinearSystemException &e) {
+        ROS_ERROR("%s\n", e.what());
+        std::ofstream f("/home/infinity/Documents/graph.gv", std::ios_base::out);
+        this->graph.saveGraph(f);
+        f.close();
     }
 
-    this->current_state = this->isam.calculateEstimate();
+    try {
+        this->current_state = this->isam.calculateEstimate();
+    } catch(const gtsam::IndeterminantLinearSystemException &e) {
+        ROS_ERROR("%s\n", e.what());
+        /* this->isam.saveGraph("/home/infinity/Documents/graph.gv"); */
+        const auto &graph  = this->isam.getFactorsUnsafe();
+
+        std::ofstream f("/home/infinity/Documents/graph.gv");
+        graph.saveGraph(f);
+        f.close();
+
+        printf("IMU RESET? %d\n", imu.reset);
+
+        this->current_state.insert(this->initial_estimates);
+        printf("==== CURRENT ESTIMATES ====\n");
+        this->current_state.print();
+        printf("==== FACTOR ERRORS ====\n");
+        graph.printErrors(this->current_state);
+        printf("==== TOTAL ERROR ====\n");
+        printf("%f\n", graph.error(this->current_state));
+
+        exit(1);
+    }
     
     this->graph = gtsam::NonlinearFactorGraph();
     this->initial_estimates.clear();
 
     this->publish_trajectory();
 
-    const gtsam::Pose3 map_to_odom = this->current_state.at<gtsam::Pose3>(X(state_index)).compose(imu.current_state.pose().inverse());
+    const gtsam::Pose3 current_pose = this->current_state.at<gtsam::Pose3>(X(state_index));
+    this->pose_pub.publish(to_pose_stamped_message(current_pose, this->map_frame));
+    
+
+    const gtsam::Pose3 map_to_odom = current_pose.compose(imu.current_state.pose().inverse());
     to_tf_tree(this->transform_broadcaster, map_to_odom, this->map_frame, this->odom_frame);
 }
 
@@ -71,23 +106,27 @@ void Optimizer::publish_trajectory() {
 }
 
 void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor) {
-    const gtsam::Pose3 &contact_pose = from_pose_message(forward_kinematic_factor->forward_kinematic_factor.contact_pose);
+    const gtsam::Pose3 &relative_contact_pose = from_pose_message(forward_kinematic_factor->forward_kinematic_factor.contact_pose);
     const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor->forward_kinematic_factor.encoder_noise.data()};
     
     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
     this->graph.add(imu_factor.factor);
-    this->initial_estimates.at<gtsam::Pose3>(X(state_index)) = imu_factor.pose_estimate;
-    this->initial_estimates.at<gtsam::Vector3>(V(state_index)) = imu_factor.velocity_estimate;
-    this->initial_estimates.at<gtsam::imuBias::ConstantBias>(B(state_index)) = imu_factor.bias_estimate;
+    this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate);
+    this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate);
+    /* this->initial_estimates.insert(B(state_index), imu_factor.bias_estimate); */
+
+    gtsam::Vector6 sigmas;
+    sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3);
+    auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
 
     // TODO(Rahul): initial estimates (linearization points) are ideally seeded by lidar odometry, not IMU, because biases are so unstable
-    this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(X(state_index), C(state_index), contact_pose, gtsam::noiseModel::Gaussian::Covariance(encoder_noise_matrix)));
-    this->initial_estimates.at<gtsam::Pose3>(C(state_index)) = imu_factor.pose_estimate.transformPoseFrom(contact_pose);
+    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), C(state_index), relative_contact_pose, noise);
+    this->initial_estimates.insert(C(state_index), imu_factor.pose_estimate.transformPoseFrom(relative_contact_pose));
 
     this->optimize();
 
     this->imu.reset_integration(
-            current_state.at<gtsam::imuBias::ConstantBias>(B(state_index)),
+            current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
             current_state.at<gtsam::Pose3>(X(state_index)),
             current_state.at<gtsam::Vector3>(V(state_index)));
 
@@ -96,31 +135,35 @@ void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKin
 }
 
 void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorStampedConstPtr &rigid_contact_factor) {
-
     const auto &forward_kinematic_factor = rigid_contact_factor->rigid_contact_factor.forward_kinematic_factor;
 
-    const gtsam::Pose3 &contact_pose = from_pose_message(forward_kinematic_factor.contact_pose);
+    const gtsam::Pose3 &relative_contact_pose = from_pose_message(forward_kinematic_factor.contact_pose);
     const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor.encoder_noise.data()};
     const Eigen::Matrix<double, 6, 6> contact_pose_covariance{rigid_contact_factor->rigid_contact_factor.contact_noise.data()};
     
     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
     this->graph.add(imu_factor.factor);
-    this->initial_estimates.at<gtsam::Pose3>(X(state_index)) = imu_factor.pose_estimate;
-    this->initial_estimates.at<gtsam::Vector3>(V(state_index)) = imu_factor.velocity_estimate;
-    this->initial_estimates.at<gtsam::imuBias::ConstantBias>(B(state_index)) = imu_factor.bias_estimate;
+    this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate);
+    this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate);
+    /* this->initial_estimates.insert(B(state_index), imu_factor.bias_estimate); */
 
-    this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(X(state_index), C(state_index), contact_pose, gtsam::noiseModel::Gaussian::Covariance(encoder_noise_matrix)));
+    gtsam::Vector6 sigmas;
+    sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3);
+    auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
+
+    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), C(state_index), relative_contact_pose, noise);
 
     // @Robustness(Rahul): is this really a correct way of doing this, where should we linearize? By the forward kinematic factor or the contact pose?
-    this->initial_estimates.at<gtsam::Pose3>(C(state_index)) = this->current_state.at<gtsam::Pose3>(C(state_index - 1));
+    this->initial_estimates.insert(C(state_index), imu_factor.pose_estimate.transformPoseFrom(relative_contact_pose));
 
-    this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), 
-                gtsam::noiseModel::Gaussian::Covariance(contact_pose_covariance)));
+    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise);
+    /* this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(),  */
+    /*             gtsam::noiseModel::Gaussian::Covariance(contact_pose_covariance))); */
 
     this->optimize();
 
     this->imu.reset_integration(
-            current_state.at<gtsam::imuBias::ConstantBias>(B(state_index)),
+            current_state.at<gtsam::imuBias::ConstantBias>(B((0))),
             current_state.at<gtsam::Pose3>(X(state_index)),
             current_state.at<gtsam::Vector3>(V(state_index)));
 
