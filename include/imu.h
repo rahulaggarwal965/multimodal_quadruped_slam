@@ -27,6 +27,8 @@ struct IMU {
 
     std::string base_link_frame;
     std::string odom_frame;
+    
+    bool reset = false;
 
     // Transform that takes a point in the IMU coordinate frame 
     // to a point in the base_link coordinate frame

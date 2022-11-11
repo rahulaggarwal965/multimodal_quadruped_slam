@@ -40,12 +40,12 @@ IMU::IMU(ros::NodeHandle &nh)
     preintegration_params->setIntegrationCovariance(vector_from_param<3>(nh, "/imu/integration_variances").asDiagonal());
     preintegration_params->setBodyPSensor(this->base_link_T_imu);
 
-    gtsam::imuBias::ConstantBias prior_imu_bias{
+     this->prev_bias = {
         vector_from_param<3>(nh, "/imu/prior_accelerometer_bias"),
         vector_from_param<3>(nh, "/imu/prior_gyroscope_bias")
     };
 
-    this->imu_integrator = gtsam::PreintegratedImuMeasurements(preintegration_params, prior_imu_bias);
+    this->imu_integrator = gtsam::PreintegratedImuMeasurements(preintegration_params, this->prev_bias);
 }
 
 // NOTE(Rahul):
@@ -57,7 +57,7 @@ IMU::IMU(ros::NodeHandle &nh)
 
 IMUFactor IMU::create_factor(int from, int to) {
     IMUFactor factor;
-    factor.factor = gtsam::ImuFactor(X(from), V(from), X(to), V(to), B(from), this->imu_integrator);
+    factor.factor = gtsam::ImuFactor(X(from), V(from), X(to), V(to), B(0), this->imu_integrator);
     factor.pose_estimate = this->current_state.pose();
     factor.velocity_estimate = this->current_state.v();
     factor.bias_estimate = this->prev_bias;
@@ -69,12 +69,16 @@ IMUFactor IMU::create_factor(int from, int to) {
 
 void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
+    reset = false;
+
     if (last_time == 0) {
         last_time = imu_data->header.stamp.toSec();
         return;
     }
 
-    double dt = imu_data->header.stamp.toSec() - this->last_time;
+    const double current_time = imu_data->header.stamp.toSec();
+
+    const double dt = current_time - this->last_time;
 
     this->imu_integrator.integrateMeasurement(
             Vector3{imu_data->linear_acceleration.x,
@@ -86,7 +90,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
             dt
             );
 
-    last_time = imu_data->header.stamp.toSec();
+    this->last_time = current_time;
 
     this->current_state = imu_integrator.predict(this->prev_state, this->prev_bias);
 
@@ -96,7 +100,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     to_tf_tree(this->transform_broadcaster, current_state.pose(), this->odom_frame, this->base_link_frame);
 
-    geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), this->odom_frame);
+    const geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), this->odom_frame);
     this->high_frequency_pose_pub.publish(pose_stamped_message);
 }
 
@@ -105,5 +109,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 // precaution to not lose any measurements
 void IMU::reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 &p, const gtsam::Vector3 &v) {
     this->imu_integrator.resetIntegrationAndSetBias(b);
+    this->prev_bias = b;
     this->prev_state = {p, v};
+    this->reset = true;
 }
