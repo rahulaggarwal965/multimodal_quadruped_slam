@@ -25,3 +25,10 @@ imu: {
   prior_gyroscope_bias: [0.0, 0.0, 0.0],
 
 }
+
+lidar: {
+  
+  topic: /os1_cloud_node/points
+  frame: os1_lidar
+
+}
