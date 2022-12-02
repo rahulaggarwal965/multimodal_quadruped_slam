@@ -31,6 +31,10 @@ add_message_files(
     ForwardKinematicFactorStamped.msg
     RigidContactFactor.msg
     RigidContactFactorStamped.msg
+    ForwardKinematicChain.msg
+    ForwardKinematicChainStamped.msg
+    RigidContactChain.msg
+    RigidContactChainStamped.msg
 )
 
 generate_messages(

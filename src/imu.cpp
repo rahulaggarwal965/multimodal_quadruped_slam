@@ -21,7 +21,7 @@ IMU::IMU(ros::NodeHandle &nh)
     this->nh.getParam("/base_link_frame", this->base_link_frame);
     this->nh.getParam("/odom_frame", this->odom_frame);
 
-    imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->imu_topic, 1, &IMU::handle_imu, this);
+    imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->imu_topic, 1, &IMU::handle_imu, this, ros::TransportHints().tcpNoDelay());
 
     high_frequency_pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>(this->high_frequency_state_topic, 1);
 
@@ -71,14 +71,17 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     reset = false;
 
+    const double current_time = imu_data->header.stamp.toSec();
+
     if (last_time == 0) {
-        last_time = imu_data->header.stamp.toSec();
+        last_time = current_time;
         return;
     }
 
-    const double current_time = imu_data->header.stamp.toSec();
-
     const double dt = current_time - this->last_time;
+
+    printf("[IMU] imu_received at {%f s}, dt: {%f s}\n", current_time, dt);
+
 
     this->imu_integrator.integrateMeasurement(
             Vector3{imu_data->linear_acceleration.x,

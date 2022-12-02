@@ -23,6 +23,8 @@
 #include "utils.h"
 #include "quadruped_slam/ForwardKinematicFactorStamped.h"
 #include "quadruped_slam/RigidContactFactorStamped.h"
+#include "quadruped_slam/ForwardKinematicChainStamped.h"
+#include "quadruped_slam/RigidContactChainStamped.h"
 
 struct Leg {
     Eigen::Vector3d q = {0, 0, 0}; //joint angles
@@ -47,6 +49,8 @@ struct LeggedKinematics {
 
     ros::Publisher forward_kinematic_factor_pub;
     ros::Publisher rigid_contact_factor_pub;
+    ros::Publisher fkc_pub;
+    ros::Publisher rcc_pub;
 
     tf2_ros::Buffer transform_buffer;
     tf2_ros::TransformListener tranform_listener;
@@ -74,10 +78,13 @@ LeggedKinematics::LeggedKinematics()
     this->encoder_covariance = vector_from_param<3>(this->nh, "/legged_kinematics/motor_encoder_variances").asDiagonal();
 
     // TODO(Rahul): make topics params as in the IMU PR
-    leg_state_sub = nh.subscribe<unitree_legged_msgs::LowState>("/a1_gazebo/lowState/state", 1, &LeggedKinematics::handle_low_state, this);
+    leg_state_sub = nh.subscribe<unitree_legged_msgs::LowState>("/a1_gazebo/lowState/state", 1, &LeggedKinematics::handle_low_state, this, ros::TransportHints().tcpNoDelay());
 
     this->forward_kinematic_factor_pub = nh.advertise<quadruped_slam::ForwardKinematicFactorStamped>("/legged_kinematics/forward_kinematic_factor", 1);
     this->rigid_contact_factor_pub = nh.advertise<quadruped_slam::RigidContactFactorStamped>("/legged_kinematics/rigid_contact_factor", 1);
+
+    this->fkc_pub = nh.advertise<quadruped_slam::ForwardKinematicChainStamped>("/legged_kinematics/fkc", 1);
+    this->rcc_pub = nh.advertise<quadruped_slam::RigidContactChainStamped>("/legged_kinematics/rcc", 1);
 }
 
 // 1. if leg transitions from no contact to contact at time t
@@ -104,78 +111,109 @@ void LeggedKinematics::handle_low_state(const unitree_legged_msgs::LowStateConst
     /* bool RL_in_contact = min((int) low_state->footForce[3], 1); */
 
     if (!FR.in_contact && FR_in_contact) {
-        std::cout << "FR contact" << '\n';
-        const gtsam::Pose3 FR_transform = from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_foot"); 
-        gtsam::Vector12 q;
-        q << low_state->motorState[0].q, low_state->motorState[1].q, low_state->motorState[2].q, 
-             low_state->motorState[3].q, low_state->motorState[4].q, low_state->motorState[5].q,
-             low_state->motorState[6].q, low_state->motorState[7].q, low_state->motorState[8].q,
-             low_state->motorState[9].q, low_state->motorState[10].q, low_state->motorState[11].q;
-        Eigen::Matrix<double, 6, 12> J{};
-        J.setZero();
-        pinocchio::computeJointJacobian(this->model, this->data, q, 6, J);
-        Eigen::Matrix<double, 6, 3> joint_J = J.block<6, 3>(0, 3);
-        gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose();
+        printf("[Legged_Kinematics] no contact -> contact at {%f s}, dt: {%f s}\n", current_time, current_time - FR.t);
+        if (current_time - FR.t > 1e-2) {
 
-        quadruped_slam::ForwardKinematicFactorStamped fk_msg;
-        fk_msg.header.stamp = t;
-        fk_msg.forward_kinematic_factor.id = 1; // FR
-        fk_msg.forward_kinematic_factor.contact_pose = to_pose_message(FR_transform);
-        for (int i = 0; i < 36; i++) {
-            fk_msg.forward_kinematic_factor.encoder_noise[i] = cov(i); // NOTE(Rahul): column major (for now)
+            quadruped_slam::ForwardKinematicChainStamped fkc_msg;
+            fkc_msg.header.stamp = t;
+            fkc_msg.forward_kinematic_chain.hip = to_pose_message(from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_thigh"));
+            fkc_msg.forward_kinematic_chain.thigh = to_pose_message(from_tf_tree(this->transform_buffer, "FR_thigh", "FR_calf"));
+            fkc_msg.forward_kinematic_chain.calf = to_pose_message(from_tf_tree(this->transform_buffer, "FR_calf", "FR_foot"));
+
+            fkc_pub.publish(fkc_msg);
+
+            /* const gtsam::Pose3 FR_transform = from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_foot");  */
+            /**/
+            /**/
+            /* gtsam::Vector12 q; */
+            /* q << low_state->motorState[0].q, low_state->motorState[1].q, low_state->motorState[2].q,  */
+            /*      low_state->motorState[3].q, low_state->motorState[4].q, low_state->motorState[5].q, */
+            /*      low_state->motorState[6].q, low_state->motorState[7].q, low_state->motorState[8].q, */
+            /*      low_state->motorState[9].q, low_state->motorState[10].q, low_state->motorState[11].q; */
+            /* Eigen::Matrix<double, 6, 12> J{}; */
+            /* J.setZero(); */
+            /* pinocchio::forwardKinematics(this->model, this->data, q); */
+            /* pinocchio::updateFramePlacements(this->model, this->data); */
+            /* pinocchio::computeJointJacobians(this->model, this->data, q); */
+            /**/
+            /* const auto fr_foot_id = this->model.getFrameId("FR_foot"); */
+            /* pinocchio::getFrameJacobian(this->model, this->data, fr_foot_id, pinocchio::LOCAL, J); */
+            /* Eigen::Matrix<double, 6, 3> joint_J = J.block<6, 3>(0, 3); */
+            /* gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose(); */
+            /**/
+            /* quadruped_slam::ForwardKinematicFactorStamped fk_msg; */
+            /* fk_msg.header.stamp = t; */
+            /* fk_msg.forward_kinematic_factor.id = 1; // FR */
+            /* fk_msg.forward_kinematic_factor.contact_pose = to_pose_message(FR_transform); */
+            /* for (int i = 0; i < 36; i++) { */
+            /*     // NOTE(Rahul): column major (for now) */
+            /*     if (i % 6 == 0) { */
+            /*         fk_msg.forward_kinematic_factor.encoder_noise[i] = fmax(cov(i), 1e-3); */
+            /*     } else { */
+            /*         fk_msg.forward_kinematic_factor.encoder_noise[i] = cov(i); */
+            /*     } */
+            /* } */
+            /* this->forward_kinematic_factor_pub.publish(fk_msg); */
+            FR.in_contact = FR_in_contact;
+            FR.t = current_time;
         }
-        this->forward_kinematic_factor_pub.publish(fk_msg);
-
-        FR.in_contact = FR_in_contact;
-        FR.t = current_time;
     }
 
     // @ArbitraryParameter 0.3 sec
-    if ((FR.in_contact && !FR_in_contact) || current_time - FR.t >= 0.3) {
-        const gtsam::Pose3 FR_transform = from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_foot"); 
-        gtsam::Vector12 q;
-        q << low_state->motorState[0].q, low_state->motorState[1].q, low_state->motorState[2].q, 
-             low_state->motorState[3].q, low_state->motorState[4].q, low_state->motorState[5].q,
-             low_state->motorState[6].q, low_state->motorState[7].q, low_state->motorState[8].q,
-             low_state->motorState[9].q, low_state->motorState[10].q, low_state->motorState[11].q;
-        Eigen::Matrix<double, 6, 12> J{};
-        J.setZero();
-        pinocchio::framesForwardKinematics(this->model, this->data, q);
-        pinocchio::computeJointJacobians(this->model, this->data, q);
+    if ((FR.in_contact && !FR_in_contact) || (FR.t != 0.0 && current_time - FR.t >= 0.3)) {
+        printf("[Legged_Kinematics] contact -> no contact at {%f s}, dt: {%f s}\n", current_time, current_time - FR.t);
+        if (current_time - FR.t > 1e-2) {
 
-        auto fr_foot_id = this->model.getFrameId("FR_foot");
-        pinocchio::getFrameJacobian(this->model, this->data, fr_foot_id, pinocchio::LOCAL, J);
-        Eigen::Matrix<double, 6, 3> joint_J = J.block<6, 3>(0, 3);
-        gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose();
+            quadruped_slam::RigidContactChainStamped rcc_msg;
+            rcc_msg.header.stamp = t;
+            rcc_msg.rcc.fkc.hip = to_pose_message(from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_thigh"));
+            rcc_msg.rcc.fkc.thigh = to_pose_message(from_tf_tree(this->transform_buffer, "FR_thigh", "FR_calf"));
+            rcc_msg.rcc.fkc.calf = to_pose_message(from_tf_tree(this->transform_buffer, "FR_calf", "FR_foot"));
 
-        quadruped_slam::RigidContactFactorStamped rc_msg;
-        const auto t = ros::Time::now();
-        rc_msg.header.stamp = t;
-
-        auto &rc = rc_msg.rigid_contact_factor;
-
-        rc.forward_kinematic_factor.id = 1; // FR
-        rc.forward_kinematic_factor.contact_pose = to_pose_message(FR_transform);
-        for (int i = 0; i < 36; i++) {
-            rc.forward_kinematic_factor.encoder_noise[i] = cov(i); // NOTE(Rahul): column major (for now)
+            rcc_pub.publish(rcc_msg);
+            /* const gtsam::Pose3 FR_transform = from_tf_tree(this->transform_buffer, this->base_link_frame, "FR_foot");  */
+            /* gtsam::Vector12 q; */
+            /* q << low_state->motorState[0].q, low_state->motorState[1].q, low_state->motorState[2].q,  */
+            /*      low_state->motorState[3].q, low_state->motorState[4].q, low_state->motorState[5].q, */
+            /*      low_state->motorState[6].q, low_state->motorState[7].q, low_state->motorState[8].q, */
+            /*      low_state->motorState[9].q, low_state->motorState[10].q, low_state->motorState[11].q; */
+            /* Eigen::Matrix<double, 6, 12> J{}; */
+            /* J.setZero(); */
+            /* pinocchio::framesForwardKinematics(this->model, this->data, q); */
+            /* pinocchio::computeJointJacobians(this->model, this->data, q); */
+            /**/
+            /* auto fr_foot_id = this->model.getFrameId("FR_foot"); */
+            /* pinocchio::getFrameJacobian(this->model, this->data, fr_foot_id, pinocchio::LOCAL, J); */
+            /* Eigen::Matrix<double, 6, 3> joint_J = J.block<6, 3>(0, 3); */
+            /* gtsam::Matrix66 cov = joint_J * this->encoder_covariance * joint_J.transpose(); */
+            /**/
+            /* quadruped_slam::RigidContactFactorStamped rc_msg; */
+            /* rc_msg.header.stamp = t; */
+            /**/
+            /* auto &rc = rc_msg.rigid_contact_factor; */
+            /**/
+            /* rc.forward_kinematic_factor.id = 1; // FR */
+            /* rc.forward_kinematic_factor.contact_pose = to_pose_message(FR_transform); */
+            /* for (int i = 0; i < 36; i++) { */
+            /*     rc.forward_kinematic_factor.encoder_noise[i] = cov(i); // NOTE(Rahul): column major (for now) */
+            /* } */
+            /**/
+            /* // TODO(rahul): refactor */
+            /* gtsam::Vector3 contact_angular_velocity_variances = {1e-3, 1e-3, 1e-3}; */
+            /* gtsam::Vector3 contact_linear_velocity_variances = {1e-6, 1e-6, 1e-6}; */
+            /**/
+            /* rc.contact_noise = {0}; */
+            /* for (int i = 0; i < 3; i++) { */
+            /*     rc.contact_noise[6 * i + i] = contact_angular_velocity_variances[i] * (FR.t - current_time); */
+            /* } */
+            /* for (int i = 0; i < 3; i++) { */
+            /*     rc.contact_noise[6 * (i + 3) + i] = contact_linear_velocity_variances[i] * (FR.t - current_time); */
+            /* } */
+            /**/
+            /* this->rigid_contact_factor_pub.publish(rc_msg); */
+            FR.in_contact = FR_in_contact;
+            FR.t = current_time;
         }
-
-        // TODO(rahul): refactor
-        gtsam::Vector3 contact_angular_velocity_variances = {1e-3, 1e-3, 1e-3};
-        gtsam::Vector3 contact_linear_velocity_variances = {1e-6, 1e-6, 1e-6};
-
-        rc.contact_noise = {0};
-        for (int i = 0; i < 3; i++) {
-            rc.contact_noise[6 * i + i] = contact_angular_velocity_variances[i] * (FR.t - current_time);
-        }
-        for (int i = 0; i < 3; i++) {
-            rc.contact_noise[6 * (i + 3) + i] = contact_linear_velocity_variances[i] * (FR.t - current_time);
-        }
-
-        this->rigid_contact_factor_pub.publish(rc_msg);
-
-        FR.in_contact = FR_in_contact;
-        FR.t = current_time;
 
     }
 }
