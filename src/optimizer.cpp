@@ -40,8 +40,10 @@ Optimizer::Optimizer()
     lidar_sub = this->nh.subscribe<quadruped_slam::lidar_factor>(get_param<std::string>(nh, "/lidar/factor_topic"), 1, &Optimizer::handle_lidar, this);
 
     // We always start at 0
-    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
-    this->initial_estimates.insert(X(0), gtsam::Pose3{});
+    const auto initial_pose = gtsam::Pose3{gtsam::Quaternion{vector_from_param<4>(nh, "/optimizer/initial_orientation")}, vector_from_param<3>(nh, "/optimizer/initial_position")};
+
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), initial_pose, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
+    this->initial_estimates.insert(X(0), initial_pose);
 
     this->graph.add(gtsam::PriorFactor<gtsam::Vector3>(V(0), gtsam::Vector3{},
         vector_from_param<3>(nh, "/optimizer/prior_vel_sigmas").asDiagonal()));

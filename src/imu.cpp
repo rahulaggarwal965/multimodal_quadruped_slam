@@ -39,7 +39,11 @@ IMU::IMU(ros::NodeHandle &nh)
     preintegration_params->setIntegrationCovariance(vector_from_param<3>(nh, "/imu/integration_variances").asDiagonal());
     preintegration_params->setBodyPSensor(this->base_link_T_imu);
 
-     this->prev_bias = {
+    const auto initial_pose = gtsam::Pose3{gtsam::Quaternion{vector_from_param<4>(nh, "/optimizer/initial_orientation")}, vector_from_param<3>(nh, "/optimizer/initial_position")};
+
+    this->prev_state = {initial_pose, gtsam::Vector3{}};
+
+    this->prev_bias = {
         vector_from_param<3>(nh, "/imu/prior_accelerometer_bias"),
         vector_from_param<3>(nh, "/imu/prior_gyroscope_bias")
     };
