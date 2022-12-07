@@ -41,6 +41,9 @@ lidar: {
   # r p y x y z
   sigmas: [2.0e-2, 2.0e-2, 2.0e-2, 1.0e-2, 1.0e-2, 1.0e-2],
 
+  keyframe_position_threshold: 0.1, # 0.1 m
+  keyframe_yaw_threshold: 0.1, # 10 degrees
+
 }
 
 legged_kinematics: {

@@ -10,7 +10,7 @@ Lidar::Lidar()
 
         this->nh.getParam("/map_frame", this->map_frame);
         this->nh.getParam("/base_link_frame", this->base_link_frame);
-        this->nh.getParam("/odom/frame", this->odom_frame);
+        this->nh.getParam("/odom_frame", this->odom_frame);
 
         this->nh.getParam("/lidar/frame", this->frame);
         this->base_link_T_lidar = from_tf_tree(this->transform_buffer, this->base_link_frame, this->frame, ros::Duration{1.0});
@@ -62,7 +62,7 @@ void Lidar::handle_cloud(const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
 
     if (current_cloud_timestamp.isZero()) {
         // initialize
-        this->last_keyframe_pose = from_tf_tree(this->transform_buffer, this->odom_frame, this->base_link_frame);
+        /* this->last_keyframe_pose = from_tf_tree(this->transform_buffer, this->odom_frame, this->base_link_frame); */
         this->current_cloud_timestamp = cloud_msg->header.stamp;
         this->current_cloud = cloud;
 
@@ -75,6 +75,17 @@ void Lidar::handle_cloud(const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     }
 
     gtsam::Pose3 approximate_state = from_tf_tree(this->transform_buffer, this->odom_frame, this->base_link_frame);
+
+    const auto distance = (approximate_state.translation() - last_keyframe_pose.translation()).norm();
+    const auto yaw_distance = approximate_state.rotation().yaw() - last_keyframe_pose.rotation().yaw();
+
+    printf("position_change: [%f], yaw_change: [%f]\n", distance, yaw_distance);
+
+    static auto keyframe_position_threshold = get_param<float>(nh, "/lidar/keyframe_position_threshold");
+    static auto keyframe_yaw_threshold = get_param<float>(nh, "/lidar/keyframe_yaw_threshold");
+
+    // 1m or 10 degrees
+    if (distance < keyframe_position_threshold && yaw_distance < keyframe_yaw_threshold) { return; }
     
     this->prev_cloud_timestamp = this->current_cloud_timestamp;
     this->prev_cloud = this->current_cloud;
