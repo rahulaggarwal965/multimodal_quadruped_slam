@@ -43,6 +43,8 @@
   <build_depend>gtsam</build_depend>
   <exec_depend>gtsam</exec_depend>
 
+  <depend>pinocchio</depend>
+
   <build_depend>message_generation</build_depend>
   <exec_depend>message_generation</exec_depend>
   <build_depend>message_runtime</build_depend>

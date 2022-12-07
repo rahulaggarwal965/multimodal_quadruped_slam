@@ -10,10 +10,13 @@
 
 #include "sensor_msgs/Imu.h"
 
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/navigation/NavState.h>
 #include <gtsam/navigation/PreintegrationParams.h>
 #include <gtsam/navigation/ImuFactor.h>
+
+struct IMUFactor;
 
 struct IMU {
     gtsam::PreintegratedImuMeasurements imu_integrator;
@@ -24,6 +27,8 @@ struct IMU {
 
     std::string base_link_frame;
     std::string odom_frame;
+    
+    bool reset = false;
 
     // Transform that takes a point in the IMU coordinate frame 
     // to a point in the base_link coordinate frame
@@ -42,14 +47,20 @@ struct IMU {
 
     // contains last optimized state
     gtsam::NavState prev_state;
+    gtsam::NavState current_state;
     gtsam::imuBias::ConstantBias prev_bias;
-
-    gtsam::ImuFactor current_imu_factor;
-
-    int state_index = 0;
 
     IMU(ros::NodeHandle &nh);
 
     void handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data);
-    void reset_integration(const gtsam::Vector3 &bias_acc, const gtsam::Vector3 &bias_gyro);
+    void reset_integration(const gtsam::imuBias::ConstantBias &b, const gtsam::Pose3 &p, const gtsam::Vector3 &v);
+
+    IMUFactor create_factor(int from, int to);
+};
+
+struct IMUFactor {
+    gtsam::ImuFactor factor;
+    gtsam::Pose3 pose_estimate;
+    gtsam::Vector3 velocity_estimate;
+    gtsam::imuBias::ConstantBias bias_estimate;
 };

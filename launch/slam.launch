@@ -2,4 +2,5 @@
     <rosparam file="$(find quadruped_slam)/config/config.yaml" />
 
     <node pkg="quadruped_slam" type="state_estimation" name="state_estimation" output="screen"></node>
+    <node pkg="quadruped_slam" type="legged_kinematics" name="legged_kinematics" output="screen"></node>
 </launch>

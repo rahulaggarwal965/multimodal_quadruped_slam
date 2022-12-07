@@ -20,6 +20,10 @@
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/navigation/ImuFactor.h>
 
+#include "quadruped_slam/ForwardKinematicChainStamped.h"
+#include "quadruped_slam/ForwardKinematicFactorStamped.h"
+#include "quadruped_slam/RigidContactChainStamped.h"
+#include "quadruped_slam/RigidContactFactorStamped.h"
 #include "imu.h"
 
 // NOTE(Rahul):
@@ -30,10 +34,11 @@ struct Optimizer {
     std::string base_link_frame;
     std::string odom_frame;
 
+    int state_index = 1;
     gtsam::ISAM2 isam;
     gtsam::NonlinearFactorGraph graph;
-    gtsam::Values initial_estimate;
-    gtsam::Values current_poses;
+    gtsam::Values initial_estimates;
+    gtsam::Values current_state;
 
     ros::NodeHandle nh;
 
@@ -44,7 +49,15 @@ struct Optimizer {
     // but it is not clear how I would do that right now
     IMU imu;
 
+    // Legged Kinematics
+    ros::Subscriber forward_kinematic_factor_sub;
+    ros::Subscriber rigid_contact_factor_sub;
+    ros::Subscriber fkc_sub;
+    ros::Subscriber rcc_sub;
+
     ros::Publisher trajectory_pub;
+    ros::Publisher pose_pub;
+
 
     tf2_ros::Buffer transform_buffer;
     tf2_ros::TransformListener transform_listener;
@@ -54,8 +67,14 @@ struct Optimizer {
 
     // TODO(rahul): think about when we want to actually optimize. Ideally, this
     // should not happen very often, preferably when we get a lidar/camera scan.
-    void optimize(int steps = 1);
+    void optimize(int steps = 0);
 
     void publish_trajectory();
+
+    void handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor);
+    void handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorStampedConstPtr &rigid_contact_factor);
+
+    void handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc);
+    void handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc);
 
 };

@@ -31,6 +31,23 @@ inline geometry_msgs::Pose to_pose_message(const gtsam::Pose3 &pose) {
     return pose_message;
 }
 
+inline gtsam::Pose3 from_pose_message(const geometry_msgs::Pose &pose_message) {
+    gtsam::Pose3 pose{
+        gtsam::Rot3{pose_message.orientation.w,
+                    pose_message.orientation.x,
+                    pose_message.orientation.y,
+                    pose_message.orientation.z},
+        gtsam::Vector3{pose_message.position.x,
+                       pose_message.position.y,
+                       pose_message.position.z}
+        };
+    return pose;
+} 
+
+inline gtsam::Pose3 from_pose_stamped_message(const geometry_msgs::PoseStamped &pose_stamped_message) {
+    return from_pose_message(pose_stamped_message.pose);
+}
+
 // Convert a gtsam Pose2 into a ros PoseStamped
 inline geometry_msgs::PoseStamped to_pose_stamped_message(const gtsam::Pose3 &pose, const std::string &frame) {
     geometry_msgs::PoseStamped pose_stamped_message;

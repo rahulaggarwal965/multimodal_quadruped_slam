@@ -23,11 +23,20 @@ find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(teaserpp REQUIRED)
+find_package(pinocchio REQUIRED)
 
 add_message_files(
     DIRECTORY msg
     FILES
     lidar_factor.msg
+    ForwardKinematicFactor.msg
+    ForwardKinematicFactorStamped.msg
+    RigidContactFactor.msg
+    RigidContactFactorStamped.msg
+    ForwardKinematicChain.msg
+    ForwardKinematicChainStamped.msg
+    RigidContactChain.msg
+    RigidContactChainStamped.msg
 )
 
 generate_messages(
@@ -60,9 +69,13 @@ include_directories(
 )
 
 add_executable(state_estimation src/slam.cpp src/optimizer.cpp src/imu.cpp)
-add_dependencies(state_estimation ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
+add_dependencies(state_estimation ${catkin_EXPORTED_TARGETS})
 target_link_libraries(state_estimation ${catkin_LIBRARIES} gtsam)
 
 add_executable(lidar src/lidar.cpp)
 add_dependencies(lidar ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(lidar ${catkin_LIBRARIES} ${PCL_LIBRARIES} teaserpp::teaser_registration gtsam)
+
+add_executable(legged_kinematics src/legged_kinematics.cpp)
+add_dependencies(legged_kinematics ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
+target_link_libraries(legged_kinematics ${catkin_LIBRARIES} gtsam pinocchio::pinocchio)
