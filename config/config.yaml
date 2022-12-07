@@ -28,7 +28,8 @@ imu: {
 
 lidar: {
   
-  topic: /os1_cloud_node/points
-  frame: os1_lidar
+  sensor_topic: /os1_cloud_node/points,
+  frame: os1_lidar,
 
+  factor_topic: /lidar/factor
 }

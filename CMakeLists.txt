@@ -27,7 +27,7 @@ find_package(teaserpp REQUIRED)
 add_message_files(
     DIRECTORY msg
     FILES
-    biases.msg
+    lidar_factor.msg
 )
 
 generate_messages(
@@ -65,4 +65,4 @@ target_link_libraries(state_estimation ${catkin_LIBRARIES} gtsam)
 
 add_executable(lidar src/lidar.cpp)
 add_dependencies(lidar ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_generate_messages_cpp)
-target_link_libraries(lidar ${catkin_LIBRARIES} ${PCL_LIBRARIES} teaserpp::teaser_registration)
+target_link_libraries(lidar ${catkin_LIBRARIES} ${PCL_LIBRARIES} teaserpp::teaser_registration gtsam)
