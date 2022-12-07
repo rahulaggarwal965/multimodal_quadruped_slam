@@ -14,22 +14,21 @@ IMU::IMU(ros::NodeHandle &nh)
       transform_listener(transform_buffer)
 {
 
-    this->nh.getParam("/imu/imu_topic", this->imu_topic);
-    this->nh.getParam("/imu/imu_frame", this->imu_frame);
-    this->nh.getParam("/imu/high_frequency_state_topic", this->high_frequency_state_topic);
+    this->nh.getParam("/imu/topic", this->topic);
+    this->nh.getParam("/imu/frame", this->frame);
 
     this->nh.getParam("/base_link_frame", this->base_link_frame);
     this->nh.getParam("/odom_frame", this->odom_frame);
 
-    imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->imu_topic, 1, &IMU::handle_imu, this, ros::TransportHints().tcpNoDelay());
+    imu_sub = this->nh.subscribe<sensor_msgs::Imu>(this->topic, 10, &IMU::handle_imu, this, ros::TransportHints().tcpNoDelay());
 
-    high_frequency_pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>(this->high_frequency_state_topic, 1);
+    high_frequency_state_pub = this->nh.advertise<geometry_msgs::PoseStamped>(get_param<std::string>(nh, "/imu/high_frequency_state_topic"), 1);
 
     // TODO(rahul): should this really be init time. Might want to do an initialization 
     // when we get the first IMU measurement
     last_time = ros::Time::now().toSec();
 
-    this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->imu_frame, ros::Duration{1.0});
+    this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->frame, ros::Duration{1.0});
 
     // gravity points down (-z)
     auto preintegration_params = gtsam::PreintegrationParams::MakeSharedU();
@@ -104,7 +103,7 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
     to_tf_tree(this->transform_broadcaster, current_state.pose(), this->odom_frame, this->base_link_frame);
 
     const geometry_msgs::PoseStamped pose_stamped_message = to_pose_stamped_message(current_state.pose(), this->odom_frame);
-    this->high_frequency_pose_pub.publish(pose_stamped_message);
+    this->high_frequency_state_pub.publish(pose_stamped_message);
 }
 
 // Because this function is called by the optimizer, which can happen arbitrarily far after 

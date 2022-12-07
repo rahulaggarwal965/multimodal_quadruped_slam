@@ -20,11 +20,15 @@
 #include <gtsam/linear/NoiseModel.h>
 #include <gtsam/navigation/ImuFactor.h>
 
+#include "quadruped_slam/lidar_factor.h"
+
+#include "imu.h"
+
 #include "quadruped_slam/ForwardKinematicChainStamped.h"
 #include "quadruped_slam/ForwardKinematicFactorStamped.h"
 #include "quadruped_slam/RigidContactChainStamped.h"
 #include "quadruped_slam/RigidContactFactorStamped.h"
-#include "imu.h"
+
 
 // NOTE(Rahul):
 // might fold in IMU into this class to avoid complexity
@@ -55,6 +59,8 @@ struct Optimizer {
     ros::Subscriber fkc_sub;
     ros::Subscriber rcc_sub;
 
+    ros::Subscriber lidar_sub;
+
     ros::Publisher trajectory_pub;
     ros::Publisher pose_pub;
 
@@ -76,5 +82,7 @@ struct Optimizer {
 
     void handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc);
     void handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc);
+
+    void handle_lidar(const quadruped_slam::lidar_factorConstPtr &lidar_factor_msg);
 
 };

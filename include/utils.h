@@ -121,4 +121,10 @@ Eigen::Matrix<double, s, 1> vector_from_param(const ros::NodeHandle &nh, const s
     return Eigen::Matrix<double, s, 1>(v.data());
 }
 
+template<typename T>
+T get_param(const ros::NodeHandle &nh, const std::string &param_name) {
+    T param;
+    nh.getParam(param_name, param);
+    return param;
+}
 
