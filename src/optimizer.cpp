@@ -28,8 +28,8 @@ Optimizer::Optimizer()
     this->nh.getParam("/base_link_frame", this->base_link_frame);
     this->nh.getParam("/odom_frame", this->odom_frame);
 
-    trajectory_pub = this->nh.advertise<nav_msgs::Path>("trajectory", 1);
-    pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>("pose", 1);
+    pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>(get_param<std::string>(nh, "/optimizer/state_topic"), 1);
+    trajectory_pub = this->nh.advertise<nav_msgs::Path>(get_param<std::string>(nh, "/optimizer/trajectory_topic"), 1);
 
     forward_kinematic_factor_sub = this->nh.subscribe<quadruped_slam::ForwardKinematicFactorStamped>("/legged_kinematics/forward_kinematic_factor", 1, &Optimizer::handle_forward_kinematic_factor, this);
     rigid_contact_factor_sub = this->nh.subscribe<quadruped_slam::RigidContactFactorStamped>("/legged_kinematics/rigid_contact_factor", 1, &Optimizer::handle_rigid_contact_factor, this);
@@ -37,9 +37,13 @@ Optimizer::Optimizer()
     fkc_sub = this->nh.subscribe<quadruped_slam::ForwardKinematicChainStamped>("/legged_kinematics/fkc", 1, &Optimizer::handle_fkc, this);
     rcc_sub = this->nh.subscribe<quadruped_slam::RigidContactChainStamped>("/legged_kinematics/rcc", 1, &Optimizer::handle_rcc, this);
 
+    lidar_sub = this->nh.subscribe<quadruped_slam::lidar_factor>(get_param<std::string>(nh, "/lidar/factor_topic"), 1, &Optimizer::handle_lidar, this);
+
     // We always start at 0
-    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), gtsam::Pose3{}, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
-    this->initial_estimates.insert(X(0), gtsam::Pose3{});
+    const auto initial_pose = gtsam::Pose3{gtsam::Quaternion{vector_from_param<4>(nh, "/optimizer/initial_orientation")}, vector_from_param<3>(nh, "/optimizer/initial_position")};
+
+    this->graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), initial_pose, vector_from_param<6>(nh, "/optimizer/prior_pose_sigmas").asDiagonal()));
+    this->initial_estimates.insert(X(0), initial_pose);
 
     this->graph.add(gtsam::PriorFactor<gtsam::Vector3>(V(0), gtsam::Vector3{},
         vector_from_param<3>(nh, "/optimizer/prior_vel_sigmas").asDiagonal()));
@@ -108,6 +112,28 @@ void Optimizer::publish_trajectory() {
 
     trajectory.header.stamp = ros::Time::now();
     this->trajectory_pub.publish(trajectory);
+}
+
+void Optimizer::handle_lidar(const quadruped_slam::lidar_factorConstPtr &lidar_factor_msg) {
+
+    static auto noise = gtsam::noiseModel::Diagonal::Sigmas(vector_from_param<6>(nh, "/lidar/sigmas"));
+    const gtsam::Pose3 relative_pose = from_pose_message(lidar_factor_msg->pose);
+
+    IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
+    this->graph.add(imu_factor.factor);
+    this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate);
+    this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate);
+
+    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index - 1), X(state_index), relative_pose, noise);
+
+    this->optimize();
+
+    this->imu.reset_integration(
+            current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
+            current_state.at<gtsam::Pose3>(X(state_index)),
+            current_state.at<gtsam::Vector3>(V(state_index)));
+
+    state_index += 1;
 }
 
 void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor) {
@@ -237,14 +263,16 @@ void Optimizer::handle_rcc(const quadruped_slam::RigidContactChainStampedConstPt
     pose = pose.compose(calf_T_foot);
     this->initial_estimates.insert(C(state_index), pose);
 
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise);
-    
-    this->optimize();
+    if (!this->imu.reset) {
+        this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise);
+        
+        this->optimize();
 
-    this->imu.reset_integration(
-            current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
-            current_state.at<gtsam::Pose3>(X(state_index)),
-            current_state.at<gtsam::Vector3>(V(state_index)));
+        this->imu.reset_integration(
+                current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
+                current_state.at<gtsam::Pose3>(X(state_index)),
+                current_state.at<gtsam::Vector3>(V(state_index)));
 
-    state_index += 1;
+        state_index += 1;
+    }
 }

@@ -4,19 +4,25 @@ base_link_frame: base
 
 optimizer: {
 
+  initial_position: [0.060, -0.063, 0.279],
+  initial_orientation: [-0.002, -0.001, 0.134, 0.990], # quaternion x, y, z, w [0, 0, 0, 1] default
+
   # values taken approximately from LIO-SAM
   # r p y x y z (rad x meters)
   prior_pose_sigmas: [1.0e-3, 1.0e-3, 1.0e-3, 1.0e-2, 1.0e-2, 1.0e-2],
-  prior_vel_sigmas: [1.0e-8, 1.0e-8, 1.0e-8]
+  prior_vel_sigmas: [1.0e-8, 1.0e-8, 1.0e-8],
+
+  state_topic: /optimizer/state,
+  trajectory_topic: /optimizer/trajectory
 
 }
 
 imu: {
 
-  imu_topic: /trunk_imu,
-  imu_frame: imu_link,
+  topic: /trunk_imu,
+  frame: imu_link,
 
-  high_frequency_state_topic: /high_frequency_state/pose,
+  high_frequency_state_topic: /imu/high_frequency_state,
 
   accelerometer_variances: [0.1, 0.1, 0.1],
   gyroscope_variances: [0.1, 0.1, 0.1],
@@ -24,6 +30,22 @@ imu: {
 
   prior_accelerometer_bias: [0.0, 0.0, 0.0],
   prior_gyroscope_bias: [0.0, 0.0, 0.0],
+
+}
+
+lidar: {
+  
+  sensor_topic: /os1_cloud_node/points,
+  frame: os1_lidar,
+
+  factor_topic: /lidar/factor,
+  cloud_topic: /lidar/cloud,
+
+  # r p y x y z
+  sigmas: [2.0e-2, 2.0e-2, 2.0e-2, 1.0e-2, 1.0e-2, 1.0e-2],
+
+  keyframe_position_threshold: 0.1, # 0.1 m
+  keyframe_yaw_threshold: 0.1, # 10 degrees
 
 }
 

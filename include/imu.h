@@ -21,9 +21,8 @@ struct IMUFactor;
 struct IMU {
     gtsam::PreintegratedImuMeasurements imu_integrator;
 
-    std::string imu_topic;
-    std::string imu_frame;
-    std::string high_frequency_state_topic;
+    std::string topic;
+    std::string frame;
 
     std::string base_link_frame;
     std::string odom_frame;
@@ -37,7 +36,7 @@ struct IMU {
     ros::NodeHandle &nh;
 
     ros::Subscriber imu_sub;
-    ros::Publisher high_frequency_pose_pub;
+    ros::Publisher high_frequency_state_pub;
 
     double last_time = 0;
 
