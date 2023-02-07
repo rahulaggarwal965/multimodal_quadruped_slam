@@ -26,7 +26,6 @@ class LoopClosureDL:
         self.activation = dict()
         def get_activation(component: str):
             def forward_hook(model: M, inp, out):
-                # Do I need to clone here?
                 # We can have multiple images, so we should flatten all dimensions except 0.
                 self.activation[component] = out.detach().clone().reshape((out.shape[0], -1))
             return forward_hook
@@ -96,32 +95,21 @@ class LoopClosureDL:
 class DeeperLoopClosureDL(LoopClosureDL):
 
     def __init__(self):
-        # Retrieve a good model
         device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
         # BatchNorm2d-76          [-1, 512, 28, 28]           1,024
         self.model = M.resnet50(weights=M.ResNet50_Weights.IMAGENET1K_V2).to(device)
         self.model.eval()
 
-        # For retrieving activation outputs of intermediate layer
         self.activation = dict()
         def get_activation(component: str):
             def forward_hook(model: M, inp, out):
-                # Do I need to clone here?
-                # We can have multiple images, so we should flatten all dimensions except 0.
                 self.activation[component] = out.detach().clone().reshape((out.shape[0], -1))
             return forward_hook
 
-        # Reference to hook if needed for later removal/modification.
-        # TODO: Find a better layer
         self.hook = self.model.layer3[0].downsample[1].register_forward_hook(get_activation("bn2"))
         self.hook = self.model.avgpool.register_forward_hook(get_activation("bn2"))
 
-        # Matrix for SVD
-        # We use vector_length as cutoff used in SVD
-        # TODO: Change constant as needed depending on layer
         self.vector_length = 15
         self.matrix = None
-
-        # A post-processing matrix reference, also added in case of future use.
         self.reduced = None
