@@ -23,6 +23,7 @@
 #include "quadruped_slam/lidar_factor.h"
 
 #include "imu.h"
+#include "timestamp_queue.h"
 
 #include "quadruped_slam/ForwardKinematicChainStamped.h"
 #include "quadruped_slam/ForwardKinematicFactorStamped.h"
@@ -43,6 +44,8 @@ struct Optimizer {
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values initial_estimates;
     gtsam::Values current_state;
+
+    TimestampQueue timestamps;
 
     ros::NodeHandle nh;
 
