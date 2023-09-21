@@ -26,7 +26,7 @@ IMU::IMU(ros::NodeHandle &nh)
 
     // TODO(rahul): should this really be init time. Might want to do an initialization 
     // when we get the first IMU measurement
-    last_time = ros::Time::now().toSec();
+    last_time = 0;
 
     this->base_link_T_imu = from_tf_tree(this->transform_buffer, this->base_link_frame, this->frame, ros::Duration{1.0});
 
@@ -76,7 +76,9 @@ void IMU::handle_imu(const sensor_msgs::Imu::ConstPtr &imu_data) {
 
     const double current_time = imu_data->header.stamp.toSec();
 
+
     if (last_time == 0) {
+        printf("first current_time: {%f s}\n", current_time);
         last_time = current_time;
         return;
     }

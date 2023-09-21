@@ -31,11 +31,8 @@ Optimizer::Optimizer()
     pose_pub = this->nh.advertise<geometry_msgs::PoseStamped>(get_param<std::string>(nh, "/optimizer/state_topic"), 1);
     trajectory_pub = this->nh.advertise<nav_msgs::Path>(get_param<std::string>(nh, "/optimizer/trajectory_topic"), 1);
 
-    forward_kinematic_factor_sub = this->nh.subscribe<quadruped_slam::ForwardKinematicFactorStamped>("/legged_kinematics/forward_kinematic_factor", 1, &Optimizer::handle_forward_kinematic_factor, this);
-    rigid_contact_factor_sub = this->nh.subscribe<quadruped_slam::RigidContactFactorStamped>("/legged_kinematics/rigid_contact_factor", 1, &Optimizer::handle_rigid_contact_factor, this);
-
-    fkc_sub = this->nh.subscribe<quadruped_slam::ForwardKinematicChainStamped>("/legged_kinematics/fkc", 1, &Optimizer::handle_fkc, this);
-    rcc_sub = this->nh.subscribe<quadruped_slam::RigidContactChainStamped>("/legged_kinematics/rcc", 1, &Optimizer::handle_rcc, this);
+    fk_sub = this->nh.subscribe<quadruped_slam::ForwardKinematicFactorStamped>("/legged_kinematics/forward_kinematic_factor", 1, &Optimizer::handle_forward_kinematic_factor, this);
+    rc_sub = this->nh.subscribe<quadruped_slam::RigidContactFactor>("/legged_kinematics/rigid_contact_factor", 1, &Optimizer::handle_rigid_contact_factor, this);
 
     lidar_sub = this->nh.subscribe<quadruped_slam::lidar_factor>(get_param<std::string>(nh, "/lidar/factor_topic"), 1, &Optimizer::handle_lidar, this);
 
@@ -136,9 +133,9 @@ void Optimizer::handle_lidar(const quadruped_slam::lidar_factorConstPtr &lidar_f
     state_index += 1;
 }
 
-void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor) {
-    const gtsam::Pose3 &relative_contact_pose = from_pose_message(forward_kinematic_factor->forward_kinematic_factor.contact_pose);
-    const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor->forward_kinematic_factor.encoder_noise.data()};
+void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &fk_msg) {
+    const gtsam::Pose3 &relative_contact_pose = from_pose_message(fk_msg->forward_kinematic_factor.contact_pose);
+    const gtsam::Matrix33 covariance{fk_msg->forward_kinematic_factor.covariance.data()};
     
     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
     this->graph.add(imu_factor.factor);
@@ -166,47 +163,14 @@ void Optimizer::handle_forward_kinematic_factor(const quadruped_slam::ForwardKin
 
 }
 
-void Optimizer::handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc) {
-    IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
-    this->graph.add(imu_factor.factor);
-    this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate);
-    this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate);
+void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorConstPtr &rc_msg) {
+    const auto &fk = rc_msg->forward_kinematic_factor;
 
-    gtsam::Vector6 sigmas;
-    sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3);
-    auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
+    const gtsam::Pose3 &fk_pose = from_pose_message(fk.contact_pose);
+    const gtsam::Matrix33 fk_covariance{fk.covariance.data()};
 
-    const auto base_T_thigh = from_pose_message(fkc->forward_kinematic_chain.hip);
-    const auto thigh_T_calf = from_pose_message(fkc->forward_kinematic_chain.thigh);
-    const auto calf_T_foot = from_pose_message(fkc->forward_kinematic_chain.calf);
-
-    // no noise assumptions
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), H(state_index), base_T_thigh, noise);
-    auto pose = imu_factor.pose_estimate.compose(base_T_thigh);
-    this->initial_estimates.insert(H(state_index), pose);
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(H(state_index), T(state_index), thigh_T_calf, noise);
-    pose = pose.compose(thigh_T_calf);
-    this->initial_estimates.insert(T(state_index), pose);
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(T(state_index), C(state_index), calf_T_foot, noise);
-    pose = pose.compose(calf_T_foot);
-    this->initial_estimates.insert(C(state_index), pose);
-    
-    this->optimize();
-
-    this->imu.reset_integration(
-            current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
-            current_state.at<gtsam::Pose3>(X(state_index)),
-            current_state.at<gtsam::Vector3>(V(state_index)));
-
-    state_index += 1;
-}
-
-void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorStampedConstPtr &rigid_contact_factor) {
-    const auto &forward_kinematic_factor = rigid_contact_factor->rigid_contact_factor.forward_kinematic_factor;
-
-    const gtsam::Pose3 &relative_contact_pose = from_pose_message(forward_kinematic_factor.contact_pose);
-    const Eigen::Matrix<double, 6, 6> encoder_noise_matrix{forward_kinematic_factor.encoder_noise.data()};
-    const Eigen::Matrix<double, 6, 6> contact_pose_covariance{rigid_contact_factor->rigid_contact_factor.contact_noise.data()};
+    const gtsam::Pose3 &rc_pose = from_pose_message(rc_msg->pose);
+    const gtsam::Matrix33 contact_pose_covariance{rc_msg->covariance.data()};
     
     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
     this->graph.add(imu_factor.factor);
@@ -218,10 +182,10 @@ void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFa
     sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3);
     auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
 
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), C(state_index), relative_contact_pose, noise);
+    /* this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), C(state_index), relative_contact_pose, noise); */
 
     // @Robustness(Rahul): is this really a correct way of doing this, where should we linearize? By the forward kinematic factor or the contact pose?
-    this->initial_estimates.insert(C(state_index), imu_factor.pose_estimate.transformPoseFrom(relative_contact_pose));
+    /* this->initial_estimates.insert(C(state_index), imu_factor.pose_estimate.transformPoseFrom(relative_contact_pose)); */
 
     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise);
     /* this->graph.add(gtsam::BetweenFactor<gtsam::Pose3>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(),  */
@@ -238,41 +202,76 @@ void Optimizer::handle_rigid_contact_factor(const quadruped_slam::RigidContactFa
 
 }
 
-void Optimizer::handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc) {
-    IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index);
-    this->graph.add(imu_factor.factor);
-    this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate);
-    this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate);
-
-    gtsam::Vector6 sigmas;
-    sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3);
-    auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
-
-    const auto base_T_thigh = from_pose_message(rcc->rcc.fkc.hip);
-    const auto thigh_T_calf = from_pose_message(rcc->rcc.fkc.thigh);
-    const auto calf_T_foot = from_pose_message(rcc->rcc.fkc.calf);
-
-    // no noise assumptions
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), H(state_index), base_T_thigh, noise);
-    auto pose = imu_factor.pose_estimate.compose(base_T_thigh);
-    this->initial_estimates.insert(H(state_index), pose);
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(H(state_index), T(state_index), thigh_T_calf, noise);
-    pose = pose.compose(thigh_T_calf);
-    this->initial_estimates.insert(T(state_index), pose);
-    this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(T(state_index), C(state_index), calf_T_foot, noise);
-    pose = pose.compose(calf_T_foot);
-    this->initial_estimates.insert(C(state_index), pose);
-
-    if (!this->imu.reset) {
-        this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise);
-        
-        this->optimize();
-
-        this->imu.reset_integration(
-                current_state.at<gtsam::imuBias::ConstantBias>(B(0)),
-                current_state.at<gtsam::Pose3>(X(state_index)),
-                current_state.at<gtsam::Vector3>(V(state_index)));
-
-        state_index += 1;
-    }
-}
+/* void Optimizer::handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc) { */
+/*     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index); */
+/*     this->graph.add(imu_factor.factor); */
+/*     this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate); */
+/*     this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate); */
+/**/
+/*     gtsam::Vector6 sigmas; */
+/*     sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3); */
+/*     auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas); */
+/**/
+/*     const auto base_T_thigh = from_pose_message(fkc->forward_kinematic_chain.hip); */
+/*     const auto thigh_T_calf = from_pose_message(fkc->forward_kinematic_chain.thigh); */
+/*     const auto calf_T_foot = from_pose_message(fkc->forward_kinematic_chain.calf); */
+/**/
+/*     // no noise assumptions */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), H(state_index), base_T_thigh, noise); */
+/*     auto pose = imu_factor.pose_estimate.compose(base_T_thigh); */
+/*     this->initial_estimates.insert(H(state_index), pose); */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(H(state_index), T(state_index), thigh_T_calf, noise); */
+/*     pose = pose.compose(thigh_T_calf); */
+/*     this->initial_estimates.insert(T(state_index), pose); */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(T(state_index), C(state_index), calf_T_foot, noise); */
+/*     pose = pose.compose(calf_T_foot); */
+/*     this->initial_estimates.insert(C(state_index), pose); */
+/**/
+/*     this->optimize(); */
+/**/
+/*     this->imu.reset_integration( */
+/*             current_state.at<gtsam::imuBias::ConstantBias>(B(0)), */
+/*             current_state.at<gtsam::Pose3>(X(state_index)), */
+/*             current_state.at<gtsam::Vector3>(V(state_index))); */
+/**/
+/*     state_index += 1; */
+/* } */
+/**/
+/* void Optimizer::handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc) { */
+/*     IMUFactor imu_factor = imu.create_factor(state_index - 1, state_index); */
+/*     this->graph.add(imu_factor.factor); */
+/*     this->initial_estimates.insert(X(state_index), imu_factor.pose_estimate); */
+/*     this->initial_estimates.insert(V(state_index), imu_factor.velocity_estimate); */
+/**/
+/*     gtsam::Vector6 sigmas; */
+/*     sigmas << gtsam::Vector3::Constant(0.1), gtsam::Vector3::Constant(0.3); */
+/*     auto noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas); */
+/**/
+/*     const auto base_T_thigh = from_pose_message(rcc->rcc.fkc.hip); */
+/*     const auto thigh_T_calf = from_pose_message(rcc->rcc.fkc.thigh); */
+/*     const auto calf_T_foot = from_pose_message(rcc->rcc.fkc.calf); */
+/**/
+/*     // no noise assumptions */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(X(state_index), H(state_index), base_T_thigh, noise); */
+/*     auto pose = imu_factor.pose_estimate.compose(base_T_thigh); */
+/*     this->initial_estimates.insert(H(state_index), pose); */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(H(state_index), T(state_index), thigh_T_calf, noise); */
+/*     pose = pose.compose(thigh_T_calf); */
+/*     this->initial_estimates.insert(T(state_index), pose); */
+/*     this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(T(state_index), C(state_index), calf_T_foot, noise); */
+/*     pose = pose.compose(calf_T_foot); */
+/*     this->initial_estimates.insert(C(state_index), pose); */
+/**/
+/*     if (!this->imu.reset) { */
+/*         this->graph.emplace_shared<gtsam::BetweenFactor<gtsam::Pose3>>(C(state_index), C(state_index - 1), gtsam::Pose3::identity(), noise); */
+/**/
+/*         this->optimize(); */
+/**/
+/*         this->imu.reset_integration( */
+/*                 current_state.at<gtsam::imuBias::ConstantBias>(B(0)), */
+/*                 current_state.at<gtsam::Pose3>(X(state_index)), */
+/*                 current_state.at<gtsam::Vector3>(V(state_index))); */
+/**/
+/*         state_index += 1; */
+/*     } */
+/* } */

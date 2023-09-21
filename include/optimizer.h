@@ -24,10 +24,8 @@
 
 #include "imu.h"
 
-#include "quadruped_slam/ForwardKinematicChainStamped.h"
 #include "quadruped_slam/ForwardKinematicFactorStamped.h"
-#include "quadruped_slam/RigidContactChainStamped.h"
-#include "quadruped_slam/RigidContactFactorStamped.h"
+#include "quadruped_slam/RigidContactFactor.h"
 
 
 // NOTE(Rahul):
@@ -54,8 +52,8 @@ struct Optimizer {
     IMU imu;
 
     // Legged Kinematics
-    ros::Subscriber forward_kinematic_factor_sub;
-    ros::Subscriber rigid_contact_factor_sub;
+    ros::Subscriber fk_sub;
+    ros::Subscriber rc_sub;
     ros::Subscriber fkc_sub;
     ros::Subscriber rcc_sub;
 
@@ -77,11 +75,11 @@ struct Optimizer {
 
     void publish_trajectory();
 
-    void handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &forward_kinematic_factor);
-    void handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorStampedConstPtr &rigid_contact_factor);
+    void handle_forward_kinematic_factor(const quadruped_slam::ForwardKinematicFactorStampedConstPtr &fk_msg);
+    void handle_rigid_contact_factor(const quadruped_slam::RigidContactFactorConstPtr &rc_msg);
 
-    void handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc);
-    void handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc);
+    /* void handle_fkc(const quadruped_slam::ForwardKinematicChainStampedConstPtr &fkc); */
+    /* void handle_rcc(const quadruped_slam::RigidContactChainStampedConstPtr &rcc); */
 
     void handle_lidar(const quadruped_slam::lidar_factorConstPtr &lidar_factor_msg);
 

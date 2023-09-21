@@ -1,8 +1,13 @@
-.cache
-compile_commands.json
-
-# environment
+# Environment
 .env
 .envrc
 
+# C/C++ Development
+.cache
+compile_commands.json
+
+# Python Development
 .ipynb_checkpoints
+
+# Data
+data/
